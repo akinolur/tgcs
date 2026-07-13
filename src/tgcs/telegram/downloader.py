@@ -1,0 +1,362 @@
+import json
+import logging
+import os
+from collections import OrderedDict
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING
+
+from telethon import functions
+from telethon.tl import types
+
+# from telethon.errors import ChatsIdInvalidError
+
+if TYPE_CHECKING:
+    from telethon.sync import TelegramClient
+    from telethon.tl.custom.message import Message
+
+    from tgcs.paths import FilePathManager
+
+logger = logging.getLogger(__name__)
+
+_LAST_LINE_CHUNK = 4096
+
+
+def _extract_reactions(message: "Message") -> dict[str, int]:
+    if message.reactions is None:
+        return {}
+    result = {}
+    for rc in message.reactions.results:
+        if isinstance(rc.reaction, types.ReactionEmoji):
+            result[rc.reaction.emoticon] = rc.count
+    return result
+
+
+def _read_last_line(path: str) -> bytes:
+    """Return the last line of a JSONL file without reading the whole file.
+
+    Seeks backward in chunks from EOF, stops at the newline that precedes the
+    last record
+    """
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        end = f.tell()
+        if end == 0:
+            return b""
+
+        # lines end with \n; skip the trailing newline of the last line
+        # so rfind below locates the *preceding* newline (= start of last record).
+        f.seek(end - 1)
+        pos = end - 1 if f.read(1) == b"\n" else end
+
+        while pos > 0:
+            chunk = min(_LAST_LINE_CHUNK, pos)
+            pos -= chunk
+            f.seek(pos)
+            data = f.read(chunk)
+            idx = data.rfind(b"\n")
+            if idx != -1:
+                f.seek(pos + idx + 1)
+                return f.readline()
+
+        # no newline found — the whole file is a single line
+        f.seek(0)
+        return f.readline()
+
+
+class TelegramChatHistoryDownloader:
+    def __init__(
+        self,
+        client: "TelegramClient",
+        path_manager: "FilePathManager",
+        download_limit=1000,
+    ):
+        self._client = client
+        self._download_limit = download_limit
+        self.path_manager = path_manager
+
+    def disconnect(self):
+        self._client.disconnect()
+
+    def _update_raw_chat_history(self, messages, group_name):
+        filename = self.path_manager.raw_history_path(group_name)
+        if not messages:
+            return 0
+        if not os.path.exists(filename):
+            with open(filename, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            return len(messages)
+
+        last_known_id = json.loads(_read_last_line(filename))["message_id"]
+
+        new_messages = [m for m in messages if m["message_id"] > last_known_id]
+
+        # fall back to full dedup/rewrite if there are overlapping IDs
+        has_overlap = len(new_messages) < len(messages)
+        if has_overlap:
+            with open(filename, "r", encoding="utf-8") as f:
+                existing = {
+                    json.loads(line)["message_id"]: json.loads(line) for line in f
+                }
+            original_count = len(existing)
+            for msg in messages:
+                existing[msg["message_id"]] = msg
+            merged = sorted(existing.values(), key=lambda x: x["message_id"])
+            with open(filename, "w", encoding="utf-8") as f:
+                for msg in merged:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            return len(merged) - original_count
+
+        if new_messages:
+            with open(filename, "a", encoding="utf-8") as f:
+                for msg in new_messages:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+        return len(new_messages)
+
+    def _create_daily_chat_history(
+        self, messages, group_name, ignore_first=True, ignore_last=True
+    ):
+        # group messages by date
+        messages_by_date = OrderedDict()
+        for message in messages:
+            date_str = message["date"].split("T")[0]
+            if date_str not in messages_by_date:
+                messages_by_date[date_str] = []
+            messages_by_date[date_str].append(message)
+        # assumption: the first and last days are sometimes incomplete; drop them
+        try:
+            if ignore_first:
+                messages_by_date.popitem(last=False)
+            if ignore_last:
+                messages_by_date.popitem(last=True)
+        except KeyError:
+            # empty dict
+            return
+
+        for date_str, day_messages in messages_by_date.items():
+            filename = self.path_manager.date_history_path(group_name, date_str)
+            # assumption: if the file exists, its history is complete
+            if os.path.exists(filename):
+                continue
+            self.path_manager.create_folders_if_not_exists(group_name, date_str)
+            with open(filename, "w", encoding="utf-8") as f:
+                for msg in day_messages:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+    def _get_info_about_chat_history(self, group_name):
+        filename = self.path_manager.raw_history_path(group_name)
+        if not os.path.exists(filename):
+            return None, None, None, None
+        with open(filename, "rb") as f:
+            first = json.loads(f.readline())
+        last = json.loads(_read_last_line(filename))
+        return (
+            first["message_id"],
+            datetime.fromisoformat(first["date"]),
+            last["message_id"],
+            datetime.fromisoformat(last["date"]),
+        )
+
+    def _prepare_message(self, message):
+        return {
+            "message_id": message.id,
+            "sender_id": message.sender_id,
+            "sender_username": message.sender.username if message.sender else None,
+            "message": message.message,
+            "date": message.date.isoformat(),
+            "reply_to_msg_id": message.reply_to_msg_id,
+            "reactions": _extract_reactions(message),
+        }
+
+    def get_entity_safely(self, id):
+        client = self._client
+        try:
+            # first, try to get it as a channel
+            return client(functions.channels.GetChannelsRequest([id])).chats[0]
+        except ValueError:
+            try:
+                # if not a channel, try as a chat
+                return client(functions.messages.GetChatsRequest(id=[id])).chats[0]
+            except ValueError:
+                # except (ValueError, ChatsIdInvalidError):
+                try:
+                    # if not a chat, try as a user
+                    return client(functions.users.GetUsersRequest([id])).users[0]
+                except ValueError:
+                    # if all fails, try one last time with get_entity
+                    return client.get_entity(id)
+
+    def _get_group_name(self, entity):
+        group_name = entity.username
+        if not group_name:
+            group_name = str(entity.title).lower().strip().replace(" ", "_")
+        return group_name
+
+    def download_chat_history(
+        self, chat_peer, previous_days=0, start_from_yesterday=True
+    ):
+        # group_name = group_name.strip().strip('"')
+        client = self._client
+        # find the group by name
+        # entity = self.get_entity_safely(chat_peer)
+        entity = client.get_entity(chat_peer)
+        # if isinstance(group_id, int):
+        group_name = self._get_group_name(entity)
+        self._save_chat_metadata(group_name, entity)
+
+        messages = []
+        today = datetime.now().date()
+        offset_date = today - timedelta(days=previous_days)
+        if start_from_yesterday:
+            offset_date = offset_date - timedelta(days=1)
+        _, first_message_date, last_message_id, _ = self._get_info_about_chat_history(
+            group_name
+        )
+        iter_messages_params = {
+            "entity": entity,
+            "limit": self._download_limit,
+            "offset_date": offset_date,
+            "reverse": True,
+        }
+        ignore_min_id = first_message_date and first_message_date.date() > offset_date
+        if last_message_id and not ignore_min_id:
+            iter_messages_params["min_id"] = last_message_id
+        # print(f"{iter_messages_params=}")
+
+        while True:
+            fetched_messages = list(client.iter_messages(**iter_messages_params))
+            if not fetched_messages:
+                # if no more messages are returned, break the loop
+                break
+
+            for message in fetched_messages:
+                message_data = self._prepare_message(message)
+                messages.append(message_data)
+            logger.debug(f"accumulated messages: {len(messages)}")
+            iter_messages_params["offset_id"] = fetched_messages[-1].id
+            # if we fetched fewer messages than the limit, we are done
+            if len(fetched_messages) < self._download_limit:
+                break
+
+        # save chat history to a file
+        self.path_manager.create_folders_if_not_exists(group_name)
+        new_messages_count = self._update_raw_chat_history(messages, group_name)
+        logger.debug(f"new messages: {new_messages_count}")
+        self._create_daily_chat_history_from_raw_history(
+            group_name, date_from=offset_date
+        )
+        return group_name, new_messages_count
+
+    def _create_daily_chat_history_from_raw_history(
+        self, group_name, date_from: date | None = None, date_to: date | None = None
+    ):
+        filename = self.path_manager.raw_history_path(group_name)
+        messages = []
+        with open(filename, "r", encoding="utf-8") as f:
+            for line in f:
+                msg = json.loads(line)
+                msg_date = datetime.fromisoformat(msg["date"]).date()
+                if date_from and msg_date < date_from:
+                    continue
+                if date_to and msg_date > date_to:
+                    break
+                messages.append(msg)
+        self._create_daily_chat_history(
+            messages, group_name, ignore_first=False, ignore_last=True
+        )
+
+    # metadata
+    def download_chat_metadata(self, folder_name: str):
+        client = self._client
+        chat_peers = self.get_chat_peers_from_folder(folder_name)
+        group_names = {}
+        for chat_peer in chat_peers:
+            entity = client.get_entity(chat_peer)
+            group_name = self._get_group_name(entity)
+            is_new = self._save_chat_metadata(group_name, entity)
+            _ = self._save_additional_requirements(group_name, "")
+            group_names[group_name] = is_new
+        for existing_name, _ in self.path_manager.all_groups_list():
+            if existing_name not in group_names:
+                self.path_manager.set_enabled(existing_name, False)
+        return group_names
+
+    def _save_chat_metadata(self, group_name, entity):
+        self.path_manager.create_folders_if_not_exists(group_name)
+        filename = self.path_manager.group_metadata_path(group_name)
+        link_prefix = self.get_message_link_prefix(entity)
+        is_new = True
+        existing = {}
+        if os.path.exists(filename):
+            is_new = False
+            with open(filename, encoding="utf-8") as f:
+                existing = json.load(f)
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    **existing,
+                    "id": entity.id,
+                    "access_hash": getattr(entity, "access_hash", 0),
+                    "title": entity.title,
+                    "username": entity.username,
+                    "link_prefix": link_prefix,
+                    "enabled": True,
+                },
+                f,
+                ensure_ascii=False,
+                indent=4,
+            )
+        return is_new
+
+    def _save_additional_requirements(self, group_name, additional_requirements):
+        self.path_manager.create_folders_if_not_exists(group_name)
+        filename = self.path_manager.additional_requirements_path(group_name)
+        if os.path.exists(filename):
+            return
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(additional_requirements)
+        return
+
+    # WORK WITH FOLDER
+    def get_chat_peers_from_folder(self, folder_name: str):
+        folder = self._get_folder_by_name(folder_name)
+        if folder is None:
+            return []
+        # client = self._client
+        chat_peers = [ch for ch in folder.include_peers]
+        return chat_peers
+
+    def _get_folder_by_name(self, folder_name: str):
+        client = self._client
+        dialog_filters = client(functions.messages.GetDialogFiltersRequest())
+        # find the folder with the matching name
+        for dialog_filter in dialog_filters.filters:
+            if (
+                isinstance(dialog_filter, types.DialogFilter)
+                and dialog_filter.title.text == folder_name
+            ):
+                return dialog_filter
+
+        return None  # Return None if the folder is not found
+
+    # OTHER
+    def get_message_link_prefix(self, entity):
+        if isinstance(entity, types.Channel):
+            if entity.username:
+                # public channel or supergroup
+                return f"https://t.me/{entity.username}/"
+            else:
+                # private channel or supergroup
+                return f"https://t.me/c/{entity.id}/"
+        elif isinstance(entity, types.Chat):
+            # private group
+            return f"https://t.me/c/{entity.id}/"
+        elif isinstance(entity, types.User):
+            if entity.username:
+                # user with username
+                return f"https://t.me/{entity.username}/"
+            else:
+                # user without username
+                return f"https://t.me/c/{entity.id}/"
+        else:
+            return "Unknown entity type"
