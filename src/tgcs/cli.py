@@ -10,6 +10,7 @@ from tgcs.app_config import (
     load_config,
     write_default_config,
 )
+from tgcs.commands import auth
 from tgcs.container import container
 from tgcs.logging_setup import setup_logging
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 app = typer.Typer(
     no_args_is_help=True, pretty_exceptions_enable=False, rich_markup_mode=None
 )
+app.add_typer(auth.app, name="auth", help="Manage Telegram authentication.")
 
 
 def _version_callback(value: bool) -> None:
