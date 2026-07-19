@@ -1,0 +1,10 @@
+[[pre-start]]
+copy = "wt step copy-ignored --require-include"
+
+[[pre-commit]]
+lint = "ruff check --fix ."
+
+[commit.generation]
+template-append = """
+- Use conventional commits (feat:, fix:, docs:, …)
+"""
