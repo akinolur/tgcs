@@ -10,7 +10,7 @@ from tgcs.app_config import (
     load_config,
     write_default_config,
 )
-from tgcs.commands import auth, chats
+from tgcs.commands import auth, chats, threads
 from tgcs.container import container
 from tgcs.logging_setup import setup_logging
 
@@ -21,6 +21,7 @@ app = typer.Typer(
 )
 app.add_typer(auth.app, name="auth", help="Manage Telegram authentication.")
 app.add_typer(chats.app, name="chats", help="Manage chat groups and download history.")
+app.add_typer(threads.app, name="threads", help="Browse and inspect message threads.")
 
 
 def _version_callback(value: bool) -> None:
