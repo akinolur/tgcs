@@ -24,6 +24,19 @@ class Container:
         )
 
     @cached_property
+    def llm_client(self):
+        from openai import OpenAI  # lazy: openai adds ~450ms to startup
+
+        if not self.cfg.llm_api_key:
+            raise SystemExit(f"llm.api_key is not set. Edit {default_config_path()}.")
+        if not self.cfg.llm_model:
+            raise SystemExit(f"llm.model is not set. Edit {default_config_path()}.")
+        return OpenAI(
+            api_key=self.cfg.llm_api_key,
+            base_url=self.cfg.llm_url,
+        )
+
+    @cached_property
     def user_client(self):
         from telethon.sync import (
             TelegramClient,  # lazy: telethon adds ~120ms to startup
