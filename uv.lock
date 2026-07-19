@@ -536,13 +536,17 @@ name = "tgcs"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
-    { name = "chevron" },
-    { name = "json-repair" },
-    { name = "openai" },
     { name = "qrcode" },
     { name = "telethon" },
     { name = "tenacity" },
     { name = "typer" },
+]
+
+[package.optional-dependencies]
+summary = [
+    { name = "chevron" },
+    { name = "json-repair" },
+    { name = "openai" },
 ]
 
 [package.dev-dependencies]
@@ -552,14 +556,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chevron" },
-    { name = "json-repair" },
-    { name = "openai" },
+    { name = "chevron", marker = "extra == 'summary'" },
+    { name = "json-repair", marker = "extra == 'summary'" },
+    { name = "openai", marker = "extra == 'summary'" },
     { name = "qrcode" },
     { name = "telethon" },
     { name = "tenacity" },
     { name = "typer" },
 ]
+provides-extras = ["summary"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
