@@ -2,6 +2,7 @@ local/
 .mcp.json
 *.session*
 data/
+CLAUDE.local.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
