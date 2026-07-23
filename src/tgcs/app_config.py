@@ -13,7 +13,6 @@ class AppConfig:
     api_hash: str | None = None
     group_folder: str | None = None
     bot_token: str | None = None
-    bot_username: str | None = None
     tg_users: list[str] = field(default_factory=list)
     llm_api_key: str | None = None
     llm_model: str | None = None
@@ -79,8 +78,7 @@ _DEFAULT_CONFIG_TEMPLATE = f"""\
 # group_folder = ""
 
 [telegram_bot]
-# bot_token = 
-# bot_username = "mybot"
+# bot_token =
 # tg_users = []
 
 [llm]
@@ -115,7 +113,6 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         kwargs["group_folder"] = tg.get("group_folder")
         tg_bot = raw.get("telegram_bot", {})
         kwargs["bot_token"] = tg_bot.get("bot_token")
-        kwargs["bot_username"] = tg_bot.get("bot_username")
         kwargs["tg_users"] = tg_bot.get("tg_users", [])
 
         llm = raw.get("llm", {})

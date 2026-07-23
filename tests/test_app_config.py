@@ -34,7 +34,6 @@ def test_load_config_full_file(tmp_path):
 
             [telegram_bot]
             bot_token = "token"
-            bot_username = "mybot"
             tg_users = ["1", "2"]
 
             [llm]
@@ -57,7 +56,6 @@ def test_load_config_full_file(tmp_path):
     assert cfg.api_hash == "hash"
     assert cfg.group_folder == "My Folder"
     assert cfg.bot_token == "token"
-    assert cfg.bot_username == "mybot"
     assert cfg.tg_users == ["1", "2"]
     assert cfg.llm_api_key == "gsk_x"
     assert cfg.llm_model == "some-model"

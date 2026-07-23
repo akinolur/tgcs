@@ -60,7 +60,6 @@ def preview():
     sample = {
         "group_name": "my_group",
         "date": "2025-01-01",
-        "bot_username": container.cfg.bot_username or "mybot",
         "threads": [
             {
                 "name": "First topic",

@@ -19,7 +19,6 @@ def thread_workflow():
             RepairJsonStep(),
             PostProcessStep(
                 template_path=container.cfg.summary_template_path,
-                bot_username=container.cfg.bot_username or "",
             ),
         ]
     )
@@ -44,7 +43,6 @@ def thread_workflow_tg_notify():
             RepairJsonStep(),
             PostProcessStep(
                 template_path=container.cfg.summary_template_path,
-                bot_username=container.cfg.bot_username or "",
             ),
             TgNotificationStep(
                 Notificator(container.bot_client, container.path_manager),

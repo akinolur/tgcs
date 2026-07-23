@@ -12,12 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class PostProcessStep(Step):
-    def __init__(self, template_path: Path | None = None, bot_username: str = ""):
+    def __init__(self, template_path: Path | None = None):
         if template_path is not None and template_path.exists():
             self.template = template_path.read_text()
         else:
             self.template = DEFAULT_SUMMARY_TEMPLATE
-        self.bot_username = bot_username
 
     def _get_threads(self, data: Any, context: Any) -> list[Thread]:
         threads: list[Thread] = context["threads"]
@@ -46,7 +45,6 @@ class PostProcessStep(Step):
         ctx = {
             "group_name": context["group_name"],
             "date": context["date"],
-            "bot_username": self.bot_username,
             "threads": [
                 {
                     "name": t.name,
