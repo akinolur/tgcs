@@ -3,6 +3,7 @@ local/
 *.session*
 data/
 CLAUDE.local.md
+.claude/settings.local.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -63,7 +64,7 @@ cover/
 .pybuilder/
 target/
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+# PEP 582
 __pypackages__/
 
 # Environments
