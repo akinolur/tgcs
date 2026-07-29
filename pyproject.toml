@@ -1,13 +1,22 @@
 [project]
 name = "tgcs"
 version = "0.0.2"
+description = "Download Telegram group history and generate LLM-powered thread summaries."
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+keywords = ["telegram", "chat", "history", "summarization", "llm"]
 dependencies = [
   "telethon",
   "typer",
   "tenacity",
   "qrcode",
 ]
+
+[project.urls]
+Homepage = "https://github.com/akinolur/tgcs"
+Repository = "https://github.com/akinolur/tgcs"
+Issues = "https://github.com/akinolur/tgcs/issues"
 
 [project.optional-dependencies]
 summary = [
