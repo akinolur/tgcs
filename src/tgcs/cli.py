@@ -72,22 +72,32 @@ def _get_group_name_by_number(number: int):
 @app.command()
 def notification(
     name: str = typer.Option(None, "--chat", "-g", help="name or number of chat"),
-    all: bool = typer.Option(
-        False, "--all", "-a", help="Download history for all groups."
-    ),
+    all: bool = typer.Option(False, "--all", "-a", help="Notify for all groups."),
     days: int | None = typer.Option(
         None, "--days", "-d", help="Only notify for last N days"
     ),
 ):
     """Send saved summaries as Telegram notifications."""
-    if name.isnumeric():
-        name = _get_group_name_by_number(int(name))
+    if all and name:
+        typer.echo("You can't specify both --all and --chat.")
+        raise typer.Exit(code=1)
+    if not all and not name:
+        typer.echo("You must specify either --chat or --all.")
+        raise typer.Exit(code=1)
+
+    if all:
+        group_names = _get_groups()
+    elif name.isnumeric():
+        group_names = [_get_group_name_by_number(int(name))]
+    else:
+        group_names = [name]
 
     from tgcs.telegram.notifier import Notificator
 
     notificator = Notificator(container.bot_client, container.path_manager)
     user_id = container.cfg.tg_users[0]
-    notificator.notify(name, user_id, last_days=days)
+    for group_name in group_names:
+        notificator.notify(group_name, user_id, last_days=days)
 
 
 @app.command()
