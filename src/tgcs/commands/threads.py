@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Optional
 
 import typer
 
-from tgcs.container import container
 from tgcs.threads import build_threads
 
 if TYPE_CHECKING:
+    from tgcs.container import Container
     from tgcs.paths import FilePathManager
 
 app = typer.Typer(no_args_is_help=True)
@@ -63,6 +63,7 @@ def _build_threads(history_raw: str, link_prefix: str, min_msgs: int):
 
 @app.command(name="ls")
 def list_threads(
+    ctx: typer.Context,
     name: str = typer.Option(..., "--chat", "-g", help="group name or number"),
     date_str: Optional[str] = typer.Option(
         None, "--date", help="single date YYYY-MM-DD"
@@ -78,6 +79,7 @@ def list_threads(
     ),
 ):
     """List threads for a chat, optionally filtered by date."""
+    container: "Container" = ctx.obj
     _list_threads(
         path_manager=container.path_manager,
         name=name,
@@ -164,11 +166,13 @@ def _list_threads(
 
 @app.command(name="dump")
 def dump_threads(
+    ctx: typer.Context,
     name: str = typer.Option(..., "--chat", help="chat name"),
     min_msgs: int = typer.Option(4, "--min-msgs", help="minimum messages per thread"),
     force: bool = typer.Option(False, "--force", help="overwrite existing files"),
 ):
     """Write threads to individual files on disk."""
+    container: "Container" = ctx.obj
     _dump_threads(
         path_manager=container.path_manager,
         name=name,
@@ -213,10 +217,12 @@ def _dump_threads(
 
 @app.command(name="show")
 def show_thread(
+    ctx: typer.Context,
     name: str = typer.Option(..., "--chat", "-g", help="group name or number"),
     root_id: int = typer.Argument(..., help="root/starter message ID"),
 ):
     """Print all messages in a thread across dates."""
+    container: "Container" = ctx.obj
     _show_thread(
         path_manager=container.path_manager,
         name=name,

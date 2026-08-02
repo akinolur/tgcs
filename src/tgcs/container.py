@@ -4,7 +4,7 @@ from pathlib import Path
 
 from tgcs.app_config import (
     PACKAGE_NAME,
-    default_config_path,
+    AppConfig,
     default_prompts_dir,
     load_config,
 )
@@ -12,9 +12,12 @@ from tgcs.paths import FilePathManager
 
 
 class Container:
+    def __init__(self, config_path: Path) -> None:
+        self.config_path = config_path
+
     @cached_property
-    def cfg(self):
-        return load_config()
+    def cfg(self) -> AppConfig:
+        return load_config(self.config_path)
 
     @cached_property
     def path_manager(self):
@@ -28,9 +31,9 @@ class Container:
         from openai import OpenAI  # lazy: openai adds ~450ms to startup
 
         if not self.cfg.llm_api_key:
-            raise SystemExit(f"llm.api_key is not set. Edit {default_config_path()}.")
+            raise SystemExit(f"llm.api_key is not set. Edit {self.config_path}.")
         if not self.cfg.llm_model:
-            raise SystemExit(f"llm.model is not set. Edit {default_config_path()}.")
+            raise SystemExit(f"llm.model is not set. Edit {self.config_path}.")
         return OpenAI(
             api_key=self.cfg.llm_api_key,
             base_url=self.cfg.llm_url,
@@ -44,7 +47,7 @@ class Container:
 
         if not self.cfg.api_id or not self.cfg.api_hash:
             raise SystemExit(
-                f"api_id and api_hash are not set. Edit {default_config_path()}."
+                f"api_id and api_hash are not set. Edit {self.config_path}."
             )
         session_file = Path(self.path_manager.user_session_path() + ".session")
         if not session_file.exists():
@@ -80,7 +83,7 @@ class Container:
 
         if not self.cfg.bot_token:
             raise SystemExit(
-                f"telegram_bot.bot_token is not set. Edit {default_config_path()}."
+                f"telegram_bot.bot_token is not set. Edit {self.config_path}."
             )
         # 0o177 masks out group+others entirely: 666 & ~177 = 600 (owner rw only)
         old_umask = os.umask(0o177)
@@ -94,6 +97,3 @@ class Container:
         finally:
             os.umask(old_umask)  # restore original mask (typically 0o022 → 644)
         return client
-
-
-container = Container()

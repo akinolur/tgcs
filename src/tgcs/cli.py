@@ -7,11 +7,10 @@ import typer
 from tgcs.app_config import (
     PACKAGE_NAME,
     default_config_path,
-    load_config,
     write_default_config,
 )
 from tgcs.commands import auth, chats, summarize, threads
-from tgcs.container import container
+from tgcs.container import Container
 from tgcs.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -35,6 +34,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(
         None,
         "--version",
@@ -55,22 +55,21 @@ def main(
     ),
 ):
     setup_logging(verbose)
-    if config is not None:
-        cfg = load_config(config)
-        container.path_manager.base_path = str(cfg.data_dir)
+    ctx.obj = Container(config or default_config_path())
 
 
-def _get_groups():
+def _get_groups(container: Container):
     return container.path_manager.groups_list()
 
 
-def _get_group_name_by_number(number: int):
-    group_names = _get_groups()
+def _get_group_name_by_number(container: Container, number: int):
+    group_names = _get_groups(container)
     return group_names[number - 1]
 
 
 @app.command()
 def notification(
+    ctx: typer.Context,
     name: str = typer.Option(None, "--chat", "-g", help="name or number of chat"),
     all: bool = typer.Option(False, "--all", "-a", help="Notify for all groups."),
     days: int | None = typer.Option(
@@ -78,6 +77,7 @@ def notification(
     ),
 ):
     """Send saved summaries as Telegram notifications."""
+    container: Container = ctx.obj
     if all and name:
         typer.echo("You can't specify both --all and --chat.")
         raise typer.Exit(code=1)
@@ -86,9 +86,9 @@ def notification(
         raise typer.Exit(code=1)
 
     if all:
-        group_names = _get_groups()
+        group_names = _get_groups(container)
     elif name.isnumeric():
-        group_names = [_get_group_name_by_number(int(name))]
+        group_names = [_get_group_name_by_number(container, int(name))]
     else:
         group_names = [name]
 

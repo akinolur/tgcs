@@ -1,21 +1,25 @@
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
-from tgcs.app_config import PACKAGE_NAME, default_config_path
-from tgcs.container import container
+from tgcs.app_config import PACKAGE_NAME
+
+if TYPE_CHECKING:
+    from tgcs.container import Container
 
 app = typer.Typer(no_args_is_help=True, rich_markup_mode=None)
 
 
 @app.command()
-def status():
+def status(ctx: typer.Context):
     """Show current Telegram authentication status."""
+    container: "Container" = ctx.obj
     from telethon.sync import TelegramClient  # lazy: telethon adds ~120ms to startup
 
     if not container.cfg.api_id or not container.cfg.api_hash:
-        typer.echo(f"api_id and api_hash are not set. Edit {default_config_path()}.")
+        typer.echo(f"api_id and api_hash are not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
 
     session_file = Path(container.path_manager.user_session_path() + ".session")
@@ -35,14 +39,15 @@ def status():
 
 
 @app.command()
-def login():
+def login(ctx: typer.Context):
     """Authenticate via Telegram QR code (no phone number required)."""
+    container: "Container" = ctx.obj
     import qrcode
     from telethon.errors import SessionPasswordNeededError
     from telethon.sync import TelegramClient  # lazy: telethon adds ~120ms to startup
 
     if not container.cfg.api_id or not container.cfg.api_hash:
-        typer.echo(f"api_id and api_hash are not set. Edit {default_config_path()}.")
+        typer.echo(f"api_id and api_hash are not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
 
     session_path = container.path_manager.user_session_path()

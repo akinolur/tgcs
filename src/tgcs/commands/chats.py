@@ -6,11 +6,10 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from tgcs.container import container
-
 if TYPE_CHECKING:
     from telethon.sync import TelegramClient
 
+    from tgcs.container import Container
     from tgcs.paths import FilePathManager
 
 logger = logging.getLogger(__name__)
@@ -19,8 +18,9 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.command(name="ls")
-def get_chats():
+def get_chats(ctx: typer.Context):
     """List known chats with status and message counts."""
+    container: "Container" = ctx.obj
     _get_chats(container.path_manager)
 
 
@@ -99,13 +99,12 @@ def _get_chats(path_manager: "FilePathManager") -> None:
 
 
 @app.command(name="update")
-def get_chats_metadata():
+def get_chats_metadata(ctx: typer.Context):
     """Fetch chat metadata from Telegram folder."""
+    container: "Container" = ctx.obj
     group_folder = container.cfg.group_folder
     if not group_folder:
-        from tgcs.app_config import default_config_path
-
-        typer.echo(f"telegram.group_folder is not set. Edit {default_config_path()}.")
+        typer.echo(f"telegram.group_folder is not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
     _get_chats_metadata(
         group_folder, container.user_client, container.path_manager
@@ -139,6 +138,7 @@ def _response_rows(group_names: list[str]):
 
 @app.command(name="download")
 def download(
+    ctx: typer.Context,
     group_name: str = typer.Argument(None),
     all: bool = typer.Option(False, "--all", "-a"),
     days: int = typer.Option(
@@ -149,6 +149,7 @@ def download(
     ),
 ):
     """Download recent message history for one or all chats."""
+    container: "Container" = ctx.obj
     previous_days = days if days is not None else container.cfg.previous_days
     if not group_name and not all:
         typer.echo("You must specify either a group name or --all.")

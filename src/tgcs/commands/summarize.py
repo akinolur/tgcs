@@ -3,13 +3,12 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from tgcs.container import container
-
 if TYPE_CHECKING:
     from pathlib import Path
 
     from openai import OpenAI
 
+    from tgcs.container import Container
     from tgcs.paths import FilePathManager
     from tgcs.telegram.notifier import Notificator
 
@@ -32,6 +31,7 @@ def summarize(
     """Generate LLM summaries for unprocessed dates."""
     if ctx.invoked_subcommand is not None:
         return
+    container: "Container" = ctx.obj
     if all and name:
         typer.echo("You can't specify both --all and --name.")
         raise typer.Exit(code=1)
@@ -40,12 +40,11 @@ def summarize(
         llm_client = container.llm_client
         notificator = None
         if tg_notification:
-            from tgcs.app_config import default_config_path
             from tgcs.telegram.notifier import Notificator
 
             if not container.cfg.tg_users:
                 raise SystemExit(
-                    f"telegram_bot.tg_users is not set. Edit {default_config_path()}."
+                    f"telegram_bot.tg_users is not set. Edit {container.config_path}."
                 )
             notificator = Notificator(container.bot_client, container.path_manager)
         _summarize_all(
@@ -67,12 +66,11 @@ def summarize(
         llm_client = container.llm_client
         notificator = None
         if tg_notification:
-            from tgcs.app_config import default_config_path
             from tgcs.telegram.notifier import Notificator
 
             if not container.cfg.tg_users:
                 raise SystemExit(
-                    f"telegram_bot.tg_users is not set. Edit {default_config_path()}."
+                    f"telegram_bot.tg_users is not set. Edit {container.config_path}."
                 )
             notificator = Notificator(container.bot_client, container.path_manager)
         _summarize_group(
@@ -92,7 +90,7 @@ def summarize(
 
 
 @app.command()
-def preview():
+def preview(ctx: typer.Context):
     """Render the summary template with sample data.
 
     Useful for testing custom templates.
@@ -101,6 +99,7 @@ def preview():
 
     from tgcs.app_config import DEFAULT_SUMMARY_TEMPLATE
 
+    container: "Container" = ctx.obj
     path = container.cfg.summary_template_path
     if path and path.exists():
         template = path.read_text()
