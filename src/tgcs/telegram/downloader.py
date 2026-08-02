@@ -74,9 +74,6 @@ class TelegramChatHistoryDownloader:
         self._download_limit = download_limit
         self.path_manager = path_manager
 
-    def disconnect(self):
-        self._client.disconnect()
-
     def _update_raw_chat_history(self, messages, group_name):
         filename = self.path_manager.raw_history_path(group_name)
         if not messages:

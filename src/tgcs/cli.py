@@ -55,7 +55,9 @@ def main(
     ),
 ):
     setup_logging(verbose)
-    ctx.obj = Container(config or default_config_path())
+    container = Container(config or default_config_path())
+    ctx.obj = container
+    ctx.call_on_close(container.close)
 
 
 def _get_groups(container: Container):
@@ -94,7 +96,7 @@ def notification(
 
     from tgcs.telegram.notifier import Notificator
 
-    notificator = Notificator(container.bot_client, container.path_manager)
+    notificator = Notificator(container.tg_bot, container.path_manager)
     user_id = container.cfg.tg_users[0]
     for group_name in group_names:
         notificator.notify(group_name, user_id, last_days=days)

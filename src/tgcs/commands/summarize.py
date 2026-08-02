@@ -37,6 +37,9 @@ def summarize(
         raise typer.Exit(code=1)
     elif all:
         logger.info("Summarizing all groups")
+        group_names = container.path_manager.groups_list()
+        if not group_names:
+            return
         llm_client = container.llm_client
         notificator = None
         if tg_notification:
@@ -46,8 +49,9 @@ def summarize(
                 raise SystemExit(
                     f"telegram_bot.tg_users is not set. Edit {container.config_path}."
                 )
-            notificator = Notificator(container.bot_client, container.path_manager)
+            notificator = Notificator(container.tg_bot, container.path_manager)
         _summarize_all(
+            group_names=group_names,
             path_manager=container.path_manager,
             notificator=notificator,
             model=container.cfg.llm_model,
@@ -72,7 +76,7 @@ def summarize(
                 raise SystemExit(
                     f"telegram_bot.tg_users is not set. Edit {container.config_path}."
                 )
-            notificator = Notificator(container.bot_client, container.path_manager)
+            notificator = Notificator(container.tg_bot, container.path_manager)
         _summarize_group(
             path_manager=container.path_manager,
             notificator=notificator,
@@ -178,6 +182,7 @@ def _get_group_name_by_number(path_manager: "FilePathManager", number: int) -> s
 
 
 def _summarize_all(
+    group_names: list[str],
     path_manager: "FilePathManager",
     notificator: "Notificator | None",
     model: str | None,
@@ -187,7 +192,7 @@ def _summarize_all(
     limit: int | None,
     days: int | None = None,
 ) -> None:
-    for group_name in path_manager.groups_list():
+    for group_name in group_names:
         _summarize_group(
             path_manager=path_manager,
             notificator=notificator,

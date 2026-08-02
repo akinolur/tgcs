@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,8 +15,6 @@ app = typer.Typer(no_args_is_help=True, rich_markup_mode=None)
 def status(ctx: typer.Context):
     """Show current Telegram authentication status."""
     container: "Container" = ctx.obj
-    from telethon.sync import TelegramClient  # lazy: telethon adds ~120ms to startup
-
     if not container.cfg.api_id or not container.cfg.api_hash:
         typer.echo(f"api_id and api_hash are not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
@@ -27,14 +24,8 @@ def status(ctx: typer.Context):
         typer.echo(f"Not logged in. Run '{PACKAGE_NAME} auth login'.")
         raise typer.Exit(code=1)
 
-    client = TelegramClient(
-        container.path_manager.user_session_path(),
-        container.cfg.api_id,
-        container.cfg.api_hash,
-    )
-    client.connect()
+    client = container.user_client
     me = client.get_me()
-    client.disconnect()
     typer.echo(f"Logged in as @{me.username} (id: {me.id})")
 
 
@@ -44,26 +35,16 @@ def login(ctx: typer.Context):
     container: "Container" = ctx.obj
     import qrcode
     from telethon.errors import SessionPasswordNeededError
-    from telethon.sync import TelegramClient  # lazy: telethon adds ~120ms to startup
 
     if not container.cfg.api_id or not container.cfg.api_hash:
         typer.echo(f"api_id and api_hash are not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
 
-    session_path = container.path_manager.user_session_path()
-    old_umask = os.umask(0o177)
-    try:
-        client = TelegramClient(
-            session_path, container.cfg.api_id, container.cfg.api_hash
-        )
-        client.connect()
-    finally:
-        os.umask(old_umask)
+    client = container.tg_client
 
     if client.is_user_authorized():
         me = client.get_me()
         typer.echo(f"Already logged in as @{me.username} (id: {me.id}).")
-        client.disconnect()
         return
 
     qr_login = client.qr_login()
@@ -85,5 +66,4 @@ def login(ctx: typer.Context):
         client.sign_in(password=password)
 
     me = client.get_me()
-    client.disconnect()
     typer.echo(f"Authenticated as @{me.username} (id: {me.id})")

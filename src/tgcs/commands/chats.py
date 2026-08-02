@@ -119,14 +119,11 @@ def _get_chats_metadata(
     from tgcs.telegram.downloader import TelegramChatHistoryDownloader
 
     tg_downloader = TelegramChatHistoryDownloader(user_client, path_manager)
-    try:
-        group_names_dict: dict[str, bool] = tg_downloader.download_chat_metadata(
-            group_folder
-        )
-        rows = _response_rows(list(group_names_dict.keys()))
-        logger.info("Metadata downloaded:\n" + "\n".join(rows))
-    finally:
-        tg_downloader.disconnect()
+    group_names_dict: dict[str, bool] = tg_downloader.download_chat_metadata(
+        group_folder
+    )
+    rows = _response_rows(list(group_names_dict.keys()))
+    logger.info("Metadata downloaded:\n" + "\n".join(rows))
 
 
 def _response_rows(group_names: list[str]):
@@ -202,8 +199,6 @@ def _download_group(
         logger.info(f"{name}: {count} new messages")
     except Exception as ex:
         logger.error(str(ex))
-    finally:
-        tg_downloader.disconnect()
 
 
 def _download_all(
@@ -230,5 +225,3 @@ def _download_all(
             logger.info(f"{name}: {count} new messages")
     except Exception as ex:
         logger.error(str(ex))
-    finally:
-        tg_downloader.disconnect()
