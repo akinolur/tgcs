@@ -1,52 +1,67 @@
-from tgcs.app_config import default_config_path
-from tgcs.container import container
+from typing import TYPE_CHECKING
+
 from tgcs.workflows.base import WorkflowExecutor
 from tgcs.workflows.steps.generate_threads_name import GenerateThreadsNameStep
 from tgcs.workflows.steps.postprocess import PostProcessStep
 from tgcs.workflows.steps.prepare_threads import PrepareThreadsStep
 from tgcs.workflows.steps.repair_json import RepairJsonStep
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-def thread_workflow():
+    from openai import OpenAI
+
+    from tgcs.paths import FilePathManager
+    from tgcs.telegram.notifier import Notificator
+
+
+def thread_workflow(
+    path_manager: "FilePathManager",
+    model: str | None,
+    llm_client: "OpenAI",
+    template_path: "Path | None",
+) -> WorkflowExecutor:
     return WorkflowExecutor(
         steps=[
             PrepareThreadsStep(),
             GenerateThreadsNameStep(
-                container.path_manager,
-                model=container.cfg.llm_model,
-                client=container.llm_client,
+                path_manager,
+                model=model,
+                client=llm_client,
             ),
             RepairJsonStep(),
             PostProcessStep(
-                template_path=container.cfg.summary_template_path,
+                template_path=template_path,
             ),
         ]
     )
 
 
-def thread_workflow_tg_notify():
-    from tgcs.telegram.notifier import Notificator
+def thread_workflow_tg_notify(
+    path_manager: "FilePathManager",
+    model: str | None,
+    llm_client: "OpenAI",
+    template_path: "Path | None",
+    notificator: "Notificator",
+    users: list[str],
+) -> WorkflowExecutor:
     from tgcs.workflows.steps.tg_notification import TgNotificationStep
 
-    if not container.cfg.tg_users:
-        raise SystemExit(
-            f"telegram_bot.tg_users is not set. Edit {default_config_path()}."
-        )
     return WorkflowExecutor(
         steps=[
             PrepareThreadsStep(),
             GenerateThreadsNameStep(
-                container.path_manager,
-                model=container.cfg.llm_model,
-                client=container.llm_client,
+                path_manager,
+                model=model,
+                client=llm_client,
             ),
             RepairJsonStep(),
             PostProcessStep(
-                template_path=container.cfg.summary_template_path,
+                template_path=template_path,
             ),
             TgNotificationStep(
-                Notificator(container.bot_client, container.path_manager),
-                users=container.cfg.tg_users,
+                notificator,
+                users=users,
             ),
         ]
     )

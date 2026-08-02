@@ -2,12 +2,15 @@ import json
 import os
 from datetime import date, timedelta
 from enum import StrEnum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import typer
 
 from tgcs.container import container
 from tgcs.threads import build_threads
+
+if TYPE_CHECKING:
+    from tgcs.paths import FilePathManager
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -17,8 +20,10 @@ class SortBy(StrEnum):
     count = "count"
 
 
-def _get_dates_for_group(group_name: str) -> list[str]:
-    history_path = container.path_manager.history_folder_path(group_name)
+def _get_dates_for_group(
+    path_manager: "FilePathManager", group_name: str
+) -> list[str]:
+    history_path = path_manager.history_folder_path(group_name)
     return sorted(
         d
         for d in os.listdir(history_path)
@@ -30,15 +35,17 @@ def _resolve_group_name(name: str) -> str:
     return name
 
 
-def _load_link_prefix(group_name: str) -> str:
-    metadata_path = container.path_manager.group_metadata_path(group_name)
+def _load_link_prefix(path_manager: "FilePathManager", group_name: str) -> str:
+    metadata_path = path_manager.group_metadata_path(group_name)
     with open(metadata_path, encoding="utf-8") as f:
         metadata = json.load(f)
     return metadata.get("link_prefix", "")
 
 
-def _load_history_raw(group_name: str, date_str: str) -> str:
-    history_path = container.path_manager.date_history_path(group_name, date_str)
+def _load_history_raw(
+    path_manager: "FilePathManager", group_name: str, date_str: str
+) -> str:
+    history_path = path_manager.date_history_path(group_name, date_str)
     if not os.path.exists(history_path):
         return ""
     with open(history_path, encoding="utf-8") as f:
@@ -71,6 +78,28 @@ def list_threads(
     ),
 ):
     """List threads for a chat, optionally filtered by date."""
+    _list_threads(
+        path_manager=container.path_manager,
+        name=name,
+        date_str=date_str,
+        from_date=from_date,
+        to_date=to_date,
+        days=days,
+        min_msgs=min_msgs,
+        sort_by=sort_by,
+    )
+
+
+def _list_threads(
+    path_manager: "FilePathManager",
+    name: str,
+    date_str: Optional[str],
+    from_date: Optional[str],
+    to_date: Optional[str],
+    days: Optional[int],
+    min_msgs: int,
+    sort_by: SortBy,
+) -> None:
     selectors_used = sum(
         [
             date_str is not None,
@@ -86,7 +115,7 @@ def list_threads(
         raise typer.Exit(code=1)
 
     group_name = _resolve_group_name(name)
-    all_dates = _get_dates_for_group(group_name)
+    all_dates = _get_dates_for_group(path_manager, group_name)
     if not all_dates:
         typer.echo("No history found.")
         raise typer.Exit(code=1)
@@ -105,11 +134,11 @@ def list_threads(
         typer.echo("No data for the specified date range.")
         raise typer.Exit(code=1)
 
-    link_prefix = _load_link_prefix(group_name)
+    link_prefix = _load_link_prefix(path_manager, group_name)
 
     rows = []
     for d in selected_dates:
-        history_raw = _load_history_raw(group_name, d)
+        history_raw = _load_history_raw(path_manager, group_name, d)
         if not history_raw.strip():
             continue
         threads = _build_threads(history_raw, link_prefix, min_msgs)
@@ -140,24 +169,35 @@ def dump_threads(
     force: bool = typer.Option(False, "--force", help="overwrite existing files"),
 ):
     """Write threads to individual files on disk."""
+    _dump_threads(
+        path_manager=container.path_manager,
+        name=name,
+        min_msgs=min_msgs,
+        force=force,
+    )
+
+
+def _dump_threads(
+    path_manager: "FilePathManager", name: str, min_msgs: int, force: bool
+) -> None:
     group_name = _resolve_group_name(name)
-    all_dates = _get_dates_for_group(group_name)
+    all_dates = _get_dates_for_group(path_manager, group_name)
     if not all_dates:
         typer.echo("No history found.")
         raise typer.Exit(code=1)
 
-    link_prefix = _load_link_prefix(group_name)
-    threads_dir = container.path_manager.threads_folder_path(group_name)
+    link_prefix = _load_link_prefix(path_manager, group_name)
+    threads_dir = path_manager.threads_folder_path(group_name)
     os.makedirs(threads_dir, exist_ok=True)
 
     written = skipped = 0
     for d in all_dates:
-        history_raw = _load_history_raw(group_name, d)
+        history_raw = _load_history_raw(path_manager, group_name, d)
         if not history_raw.strip():
             continue
         threads = _build_threads(history_raw, link_prefix, min_msgs)
         for t in threads:
-            out_path = container.path_manager.thread_file_path(
+            out_path = path_manager.thread_file_path(
                 group_name, d, t.thread_starter_id
             )
             if not force and os.path.exists(out_path):
@@ -177,15 +217,25 @@ def show_thread(
     root_id: int = typer.Argument(..., help="root/starter message ID"),
 ):
     """Print all messages in a thread across dates."""
+    _show_thread(
+        path_manager=container.path_manager,
+        name=name,
+        root_id=root_id,
+    )
+
+
+def _show_thread(
+    path_manager: "FilePathManager", name: str, root_id: int
+) -> None:
     group_name = _resolve_group_name(name)
-    all_dates = _get_dates_for_group(group_name)
+    all_dates = _get_dates_for_group(path_manager, group_name)
     if not all_dates:
         typer.echo("No history found.")
         raise typer.Exit(code=1)
 
     root_date_idx = None
     for i, d in enumerate(all_dates):
-        history_path = container.path_manager.date_history_path(group_name, d)
+        history_path = path_manager.date_history_path(group_name, d)
         if not os.path.exists(history_path):
             continue
         with open(history_path, encoding="utf-8") as f:
@@ -204,7 +254,7 @@ def show_thread(
         typer.echo(f"Message {root_id} not found.")
         raise typer.Exit(code=1)
 
-    history_raw = _load_history_raw(group_name, all_dates[root_date_idx])
+    history_raw = _load_history_raw(path_manager, group_name, all_dates[root_date_idx])
     threads = build_threads(history_raw)
     root_thread = next((t for t in threads if t.thread_starter_id == root_id), None)
     if root_thread is None:
@@ -215,7 +265,7 @@ def show_thread(
     all_messages = list(root_thread.messages)
 
     for d in all_dates[root_date_idx + 1 :]:
-        history_path = container.path_manager.date_history_path(group_name, d)
+        history_path = path_manager.date_history_path(group_name, d)
         if not os.path.exists(history_path):
             continue
         with open(history_path, encoding="utf-8") as f:

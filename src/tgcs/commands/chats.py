@@ -2,10 +2,16 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import typer
 
 from tgcs.container import container
+
+if TYPE_CHECKING:
+    from telethon.sync import TelegramClient
+
+    from tgcs.paths import FilePathManager
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +21,14 @@ app = typer.Typer(no_args_is_help=True)
 @app.command(name="ls")
 def get_chats():
     """List known chats with status and message counts."""
-    all_groups = sorted(container.path_manager.all_groups_list())
+    _get_chats(container.path_manager)
+
+
+def _get_chats(path_manager: "FilePathManager") -> None:
+    all_groups = sorted(path_manager.all_groups_list())
 
     def _dates(group_name):
-        history_path = container.path_manager.history_folder_path(group_name)
+        history_path = path_manager.history_folder_path(group_name)
         if not os.path.exists(history_path):
             return []
         return sorted(
@@ -30,7 +40,7 @@ def get_chats():
     def _last_dt(group_name, dates):
         if not dates:
             return "—"
-        history_file = container.path_manager.date_history_path(group_name, dates[-1])
+        history_file = path_manager.date_history_path(group_name, dates[-1])
         if not os.path.exists(history_file):
             return "—"
         with open(history_file, "rb") as f:
@@ -56,7 +66,7 @@ def get_chats():
     def _msg_count(group_name, dates):
         total = 0
         for date in dates:
-            history_file = container.path_manager.date_history_path(group_name, date)
+            history_file = path_manager.date_history_path(group_name, date)
             if not os.path.exists(history_file):
                 continue
             with open(history_file, "rb") as f:
@@ -91,19 +101,28 @@ def get_chats():
 @app.command(name="update")
 def get_chats_metadata():
     """Fetch chat metadata from Telegram folder."""
-    if not container.cfg.group_folder:
+    group_folder = container.cfg.group_folder
+    if not group_folder:
         from tgcs.app_config import default_config_path
 
         typer.echo(f"telegram.group_folder is not set. Edit {default_config_path()}.")
         raise typer.Exit(code=1)
+    _get_chats_metadata(
+        group_folder, container.user_client, container.path_manager
+    )
+
+
+def _get_chats_metadata(
+    group_folder: str,
+    user_client: "TelegramClient",
+    path_manager: "FilePathManager",
+) -> None:
     from tgcs.telegram.downloader import TelegramChatHistoryDownloader
 
-    tg_downloader = TelegramChatHistoryDownloader(
-        container.user_client, container.path_manager
-    )
+    tg_downloader = TelegramChatHistoryDownloader(user_client, path_manager)
     try:
         group_names_dict: dict[str, bool] = tg_downloader.download_chat_metadata(
-            container.cfg.group_folder
+            group_folder
         )
         rows = _response_rows(list(group_names_dict.keys()))
         logger.info("Metadata downloaded:\n" + "\n".join(rows))
@@ -136,10 +155,21 @@ def download(
         raise typer.Exit(code=1)
     elif all:
         logger.info("Downloading all groups")
-        _download_all(previous_days)
+        _download_all(
+            user_client=container.user_client,
+            path_manager=container.path_manager,
+            default_previous_days=container.cfg.previous_days,
+            previous_days=previous_days,
+        )
     else:
         logger.info(f"Downloading group: {group_name}")
-        _download_group(group_name, previous_days)
+        _download_group(
+            user_client=container.user_client,
+            path_manager=container.path_manager,
+            group_name=group_name,
+            previous_days=previous_days,
+            default_previous_days=container.cfg.previous_days,
+        )
 
 
 def _chat_peer_from_metadata(metadata: dict):
@@ -150,15 +180,19 @@ def _chat_peer_from_metadata(metadata: dict):
     return InputPeerChannel(chat_id, access_hash) if access_hash else chat_id
 
 
-def _download_group(group_name: str, previous_days: int | None = None):
+def _download_group(
+    user_client: "TelegramClient",
+    path_manager: "FilePathManager",
+    group_name: str,
+    previous_days: int | None = None,
+    default_previous_days: int = 0,
+) -> None:
     from tgcs.telegram.downloader import TelegramChatHistoryDownloader
 
-    days = previous_days if previous_days is not None else container.cfg.previous_days
-    tg_downloader = TelegramChatHistoryDownloader(
-        container.user_client, container.path_manager
-    )
+    days = previous_days if previous_days is not None else default_previous_days
+    tg_downloader = TelegramChatHistoryDownloader(user_client, path_manager)
     try:
-        metadata_path = container.path_manager.group_metadata_path(group_name)
+        metadata_path = path_manager.group_metadata_path(group_name)
         with open(metadata_path) as f:
             metadata = json.load(f)
         name, count = tg_downloader.download_chat_history(
@@ -171,19 +205,22 @@ def _download_group(group_name: str, previous_days: int | None = None):
         tg_downloader.disconnect()
 
 
-def _download_all(previous_days: int | None = None):
+def _download_all(
+    user_client: "TelegramClient",
+    path_manager: "FilePathManager",
+    default_previous_days: int,
+    previous_days: int | None = None,
+) -> None:
     from tgcs.telegram.downloader import TelegramChatHistoryDownloader
 
-    days = previous_days if previous_days is not None else container.cfg.previous_days
-    tg_downloader = TelegramChatHistoryDownloader(
-        container.user_client, container.path_manager
-    )
-    group_names = container.path_manager.groups_list()
+    days = previous_days if previous_days is not None else default_previous_days
+    tg_downloader = TelegramChatHistoryDownloader(user_client, path_manager)
+    group_names = path_manager.groups_list()
     try:
         for tg_chat in group_names:
             if not tg_chat:
                 continue
-            metadata_path = container.path_manager.group_metadata_path(tg_chat)
+            metadata_path = path_manager.group_metadata_path(tg_chat)
             with open(metadata_path) as f:
                 metadata = json.load(f)
             name, count = tg_downloader.download_chat_history(

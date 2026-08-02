@@ -1,8 +1,17 @@
 import logging
+from typing import TYPE_CHECKING
 
 import typer
 
 from tgcs.container import container
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from openai import OpenAI
+
+    from tgcs.paths import FilePathManager
+    from tgcs.telegram.notifier import Notificator
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +37,55 @@ def summarize(
         raise typer.Exit(code=1)
     elif all:
         logger.info("Summarizing all groups")
-        _summarize_all(tg_notification, limit, days)
+        llm_client = container.llm_client
+        notificator = None
+        if tg_notification:
+            from tgcs.app_config import default_config_path
+            from tgcs.telegram.notifier import Notificator
+
+            if not container.cfg.tg_users:
+                raise SystemExit(
+                    f"telegram_bot.tg_users is not set. Edit {default_config_path()}."
+                )
+            notificator = Notificator(container.bot_client, container.path_manager)
+        _summarize_all(
+            path_manager=container.path_manager,
+            notificator=notificator,
+            model=container.cfg.llm_model,
+            llm_client=llm_client,
+            template_path=container.cfg.summary_template_path,
+            users=container.cfg.tg_users,
+            limit=limit,
+            days=days,
+        )
     elif name:
         if name.isnumeric():
-            name = _get_group_name_by_number(int(name))  # noqa: PLW2901
+            name = _get_group_name_by_number(  # noqa: PLW2901
+                container.path_manager, int(name)
+            )
         logger.info(f"Summarizing group: {name}")
-        _summarize_group(name, tg_notification, limit, days)
+        llm_client = container.llm_client
+        notificator = None
+        if tg_notification:
+            from tgcs.app_config import default_config_path
+            from tgcs.telegram.notifier import Notificator
+
+            if not container.cfg.tg_users:
+                raise SystemExit(
+                    f"telegram_bot.tg_users is not set. Edit {default_config_path()}."
+                )
+            notificator = Notificator(container.bot_client, container.path_manager)
+        _summarize_group(
+            path_manager=container.path_manager,
+            notificator=notificator,
+            model=container.cfg.llm_model,
+            llm_client=llm_client,
+            template_path=container.cfg.summary_template_path,
+            users=container.cfg.tg_users,
+            group_name=name,
+            limit=limit,
+            days=days,
+        )
     else:
         typer.echo("You must specify either --chat or --all.")
         raise typer.Exit(code=1)
@@ -88,22 +140,63 @@ def preview():
         raise typer.Exit(code=1)
 
 
-def _summarize_group(group_name: str, tg_notification, limit, days=None):
+def _summarize_group(
+    path_manager: "FilePathManager",
+    notificator: "Notificator | None",
+    model: str | None,
+    llm_client: "OpenAI",
+    template_path: "Path | None",
+    users: list[str],
+    group_name: str,
+    limit: int | None,
+    days: int | None = None,
+) -> None:
     from tgcs.summary_creator import SummaryCreator
     from tgcs.workflows.pipelines import thread_workflow, thread_workflow_tg_notify
 
-    workflow = thread_workflow()
-    if tg_notification:
-        workflow = thread_workflow_tg_notify()
-    SummaryCreator(container.path_manager, workflow).process_unprocessed_dates(
+    workflow = thread_workflow(
+        path_manager=path_manager,
+        model=model,
+        llm_client=llm_client,
+        template_path=template_path,
+    )
+    if notificator is not None:
+        workflow = thread_workflow_tg_notify(
+            path_manager=path_manager,
+            model=model,
+            llm_client=llm_client,
+            template_path=template_path,
+            notificator=notificator,
+            users=users,
+        )
+    SummaryCreator(path_manager, workflow).process_unprocessed_dates(
         group_name, limit, last_days=days
     )
 
 
-def _get_group_name_by_number(number: int) -> str:
-    return container.path_manager.groups_list()[number - 1]
+def _get_group_name_by_number(path_manager: "FilePathManager", number: int) -> str:
+    return path_manager.groups_list()[number - 1]
 
 
-def _summarize_all(tg_notification, limit, days=None):
-    for group_name in container.path_manager.groups_list():
-        _summarize_group(group_name, tg_notification, limit, days)
+def _summarize_all(
+    path_manager: "FilePathManager",
+    notificator: "Notificator | None",
+    model: str | None,
+    llm_client: "OpenAI",
+    template_path: "Path | None",
+    users: list[str],
+    limit: int | None,
+    days: int | None = None,
+) -> None:
+    for group_name in path_manager.groups_list():
+        _summarize_group(
+            path_manager=path_manager,
+            notificator=notificator,
+            model=model,
+            llm_client=llm_client,
+            template_path=template_path,
+            users=users,
+            group_name=group_name,
+            limit=limit,
+            days=days,
+        )
