@@ -20,9 +20,7 @@ class SortBy(StrEnum):
     count = "count"
 
 
-def _get_dates_for_group(
-    path_manager: "FilePathManager", group_name: str
-) -> list[str]:
+def _get_dates_for_group(path_manager: "FilePathManager", group_name: str) -> list[str]:
     history_path = path_manager.history_folder_path(group_name)
     return sorted(
         d
@@ -201,9 +199,7 @@ def _dump_threads(
             continue
         threads = _build_threads(history_raw, link_prefix, min_msgs)
         for t in threads:
-            out_path = path_manager.thread_file_path(
-                group_name, d, t.thread_starter_id
-            )
+            out_path = path_manager.thread_file_path(group_name, d, t.thread_starter_id)
             if not force and os.path.exists(out_path):
                 skipped += 1
                 continue
@@ -230,9 +226,7 @@ def show_thread(
     )
 
 
-def _show_thread(
-    path_manager: "FilePathManager", name: str, root_id: int
-) -> None:
+def _show_thread(path_manager: "FilePathManager", name: str, root_id: int) -> None:
     group_name = _resolve_group_name(name)
     all_dates = _get_dates_for_group(path_manager, group_name)
     if not all_dates:

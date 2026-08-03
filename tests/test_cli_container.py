@@ -191,9 +191,7 @@ def test_bot_is_disconnected_when_start_fails(monkeypatch, tmp_path):
     assert events == ["create", "start", "disconnect"]
 
 
-def test_container_closes_all_clients_in_reverse_creation_order(
-    monkeypatch, tmp_path
-):
+def test_container_closes_all_clients_in_reverse_creation_order(monkeypatch, tmp_path):
     # given
     events = []
     telegram_clients = []

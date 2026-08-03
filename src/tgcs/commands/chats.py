@@ -106,9 +106,7 @@ def get_chats_metadata(ctx: typer.Context):
     if not group_folder:
         typer.echo(f"telegram.group_folder is not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
-    _get_chats_metadata(
-        group_folder, container.user_client, container.path_manager
-    )
+    _get_chats_metadata(group_folder, container.user_client, container.path_manager)
 
 
 def _get_chats_metadata(
