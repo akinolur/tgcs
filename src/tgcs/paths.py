@@ -5,7 +5,8 @@ from pathlib import Path
 
 class FilePathManager:
     def __init__(self, base_path: str = "data", prompt_dir: str = "prompts"):
-        self.base_path = base_path  # triggers setter which creates the dir
+        self.base_path = base_path
+        os.makedirs(base_path, exist_ok=True)
         self.prompt_dir = prompt_dir
         self.history_folder_name = "history"
         self.threads_folder_name = "threads"
@@ -17,15 +18,6 @@ class FilePathManager:
         self.additional_requirements_filename = "additional_requirements.md"
         self.thread_names_filename_raw = "thread_names_raw.txt"
         self.notified_filename = "notified"
-
-    @property
-    def base_path(self) -> str:
-        return self._base_path
-
-    @base_path.setter
-    def base_path(self, value: str) -> None:
-        self._base_path = value
-        os.makedirs(value, exist_ok=True)
 
     def threads_folder_path(self, group_name: str) -> str:
         return os.path.join(self.base_path, group_name, self.threads_folder_name)
