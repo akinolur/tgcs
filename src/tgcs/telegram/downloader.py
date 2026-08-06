@@ -273,9 +273,9 @@ class TelegramChatHistoryDownloader:
             is_new = self._save_chat_metadata(group_name, entity)
             _ = self._save_additional_requirements(group_name, "")
             group_names[group_name] = is_new
-        for existing_name, _ in self.path_manager.all_groups_list():
+        for existing_name, _, _ in self.path_manager.all_groups_list():
             if existing_name not in group_names:
-                self.path_manager.set_enabled(existing_name, False)
+                self.path_manager.set_downloading_enabled(existing_name, False)
         return group_names
 
     def _save_chat_metadata(self, group_name, entity):
@@ -288,6 +288,11 @@ class TelegramChatHistoryDownloader:
             is_new = False
             with open(filename, encoding="utf-8") as f:
                 existing = json.load(f)
+        # only downloading_enabled is derived from telegram folder membership,
+        # every other key (summarization_enabled included) is kept as is
+        legacy_enabled = existing.pop("enabled", None)
+        if legacy_enabled is not None:
+            existing.setdefault("summarization_enabled", legacy_enabled)
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(
                 {
@@ -297,7 +302,7 @@ class TelegramChatHistoryDownloader:
                     "title": entity.title,
                     "username": entity.username,
                     "link_prefix": link_prefix,
-                    "enabled": True,
+                    "downloading_enabled": True,
                 },
                 f,
                 ensure_ascii=False,

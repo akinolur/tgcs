@@ -31,6 +31,10 @@ data/{group_name}/
     lock
 ```
 
+`metadata.json` holds two independent flags, both default `true`:
+- `downloading_enabled`. managed by `chats update` from Telegram folder membership
+- `summarization_enabled`. user-owned, never changed by `chats update`
+
 ## Workflow System
 
 Each step in `workflows/` implements the `Step` interface with a `process` method that

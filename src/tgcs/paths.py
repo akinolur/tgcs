@@ -65,36 +65,54 @@ class FilePathManager:
             )
             os.makedirs(date_history_folder_path, exist_ok=True)
 
-    def is_enabled(self, group_name: str) -> bool:
+    def _flag(self, group_name: str, flag_name: str) -> bool:
         metadata_path = self.group_metadata_path(group_name)
         if not os.path.exists(metadata_path):
             return False
         with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
-        return metadata.get("enabled", True)
+        # "enabled" is the legacy flag that used to gate both actions
+        return metadata.get(flag_name, metadata.get("enabled", True))
 
-    def set_enabled(self, group_name: str, enabled: bool) -> None:
+    def is_downloading_enabled(self, group_name: str) -> bool:
+        return self._flag(group_name, "downloading_enabled")
+
+    def is_summarization_enabled(self, group_name: str) -> bool:
+        return self._flag(group_name, "summarization_enabled")
+
+    def set_downloading_enabled(self, group_name: str, enabled: bool) -> None:
         metadata_path = self.group_metadata_path(group_name)
         with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
-        metadata["enabled"] = enabled
+        legacy_enabled = metadata.pop("enabled", None)
+        if legacy_enabled is not None:
+            metadata.setdefault("summarization_enabled", legacy_enabled)
+        metadata["downloading_enabled"] = enabled
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, ensure_ascii=False, indent=4)
 
-    def groups_list(self) -> list[str]:
-        groups = []
-        for group_name in os.listdir(self.base_path):
-            metadata_path = self.group_metadata_path(group_name)
-            if os.path.exists(metadata_path) and self.is_enabled(group_name):
-                groups.append(group_name)
-        return groups
+    def download_groups_list(self) -> list[str]:
+        return [name for name, downloading, _ in self.all_groups_list() if downloading]
 
-    def all_groups_list(self) -> list[tuple[str, bool]]:
+    def summarize_groups_list(self) -> list[str]:
+        return [
+            name for name, _, summarization in self.all_groups_list() if summarization
+        ]
+
+    def all_groups_list(self) -> list[tuple[str, bool, bool]]:
+        if not os.path.isdir(self.base_path):
+            return []
         groups = []
         for group_name in os.listdir(self.base_path):
             metadata_path = self.group_metadata_path(group_name)
             if os.path.exists(metadata_path):
-                groups.append((group_name, self.is_enabled(group_name)))
+                groups.append(
+                    (
+                        group_name,
+                        self.is_downloading_enabled(group_name),
+                        self.is_summarization_enabled(group_name),
+                    )
+                )
         return groups
 
     def additional_requirements_path(self, group_name: str) -> str:

@@ -37,7 +37,7 @@ def summarize(
         raise typer.Exit(code=1)
     elif all:
         logger.info("Summarizing all groups")
-        group_names = container.path_manager.groups_list()
+        group_names = container.path_manager.summarize_groups_list()
         if not group_names:
             return
         llm_client = container.llm_client
@@ -178,7 +178,7 @@ def _summarize_group(
 
 
 def _get_group_name_by_number(path_manager: "FilePathManager", number: int) -> str:
-    return path_manager.groups_list()[number - 1]
+    return path_manager.summarize_groups_list()[number - 1]
 
 
 def _summarize_all(

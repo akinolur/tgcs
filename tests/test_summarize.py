@@ -8,7 +8,7 @@ def test_summarize_all_with_no_groups_does_not_create_clients():
     client_requests = []
 
     class EmptyPathManager:
-        def groups_list(self):
+        def summarize_groups_list(self):
             return []
 
     class FakeContainer:

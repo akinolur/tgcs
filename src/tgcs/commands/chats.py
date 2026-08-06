@@ -74,28 +74,30 @@ def _get_chats(path_manager: "FilePathManager") -> None:
         return total
 
     rows = []
-    for name, is_enabled in all_groups:
+    for name, downloading_enabled, summarization_enabled in all_groups:
         dates = _dates(name)
         rows.append(
             (
                 name,
-                "enabled" if is_enabled else "disabled",
+                "on" if downloading_enabled else "off",
+                "on" if summarization_enabled else "off",
                 _last_dt(name, dates),
                 _msg_count(name, dates),
             )
         )
     col1 = max(len("NAME"), *(len(r[0]) for r in rows)) if rows else len("NAME")
-    col2 = max(len("STATUS"), *(len(r[1]) for r in rows)) if rows else len("STATUS")
-    col4 = (
-        max(len("MESSAGES"), *(len(str(r[3])) for r in rows))
+    col5 = (
+        max(len("MESSAGES"), *(len(str(r[4])) for r in rows))
         if rows
         else len("MESSAGES")
     )
     print(
-        f"{'NAME':<{col1}}  {'STATUS':<{col2}}  {'LAST MESSAGE':<16}  {'MESSAGES':>{col4}}"  # noqa: E501
+        f"{'NAME':<{col1}}  {'DOWNLOAD':<8}  {'SUMMARY':<7}  {'LAST MESSAGE':<16}  {'MESSAGES':>{col5}}"  # noqa: E501
     )
-    for name, status, last_dt, msg_count in rows:
-        print(f"{name:<{col1}}  {status:<{col2}}  {last_dt:<16}  {msg_count:>{col4}}")
+    for name, download, summary, last_dt, msg_count in rows:
+        print(
+            f"{name:<{col1}}  {download:<8}  {summary:<7}  {last_dt:<16}  {msg_count:>{col5}}"  # noqa: E501
+        )
 
 
 @app.command(name="update")
@@ -209,7 +211,7 @@ def _download_all(
 
     days = previous_days if previous_days is not None else default_previous_days
     tg_downloader = TelegramChatHistoryDownloader(user_client, path_manager)
-    group_names = path_manager.groups_list()
+    group_names = path_manager.download_groups_list()
     try:
         for tg_chat in group_names:
             if not tg_chat:

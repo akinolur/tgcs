@@ -26,7 +26,7 @@ def _version_callback(value: bool) -> None:
 
 
 def _get_groups(container: Container):
-    return container.path_manager.groups_list()
+    return container.path_manager.summarize_groups_list()
 
 
 def _get_group_name_by_number(container: Container, number: int):
