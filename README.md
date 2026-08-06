@@ -1,4 +1,4 @@
-# tgcs
+# tgcs (telegram chats summary)
 
 CLI for downloading Telegram group chat history and generating summaries.
 Useful for a daily digest or as a data source for an AI agent.
