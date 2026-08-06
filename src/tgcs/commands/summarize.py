@@ -49,7 +49,7 @@ def summarize(
                 raise SystemExit(
                     f"telegram_bot.tg_users is not set. Edit {container.config_path}."
                 )
-            notificator = Notificator(container.tg_bot, container.path_manager)
+            notificator = Notificator(container.bot_client, container.path_manager)
         _summarize_all(
             group_names=group_names,
             path_manager=container.path_manager,
@@ -76,7 +76,7 @@ def summarize(
                 raise SystemExit(
                     f"telegram_bot.tg_users is not set. Edit {container.config_path}."
                 )
-            notificator = Notificator(container.tg_bot, container.path_manager)
+            notificator = Notificator(container.bot_client, container.path_manager)
         _summarize_group(
             path_manager=container.path_manager,
             notificator=notificator,

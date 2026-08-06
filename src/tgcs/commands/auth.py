@@ -40,7 +40,7 @@ def login(ctx: typer.Context):
         typer.echo(f"api_id and api_hash are not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
 
-    client = container.tg_client
+    client = container.auth_client
 
     if client.is_user_authorized():
         me = client.get_me()

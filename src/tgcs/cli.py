@@ -15,49 +15,14 @@ from tgcs.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(
-    no_args_is_help=True, pretty_exceptions_enable=False, rich_markup_mode=None
-)
-app.add_typer(auth.app, name="auth", help="Manage Telegram authentication.")
-app.add_typer(chats.app, name="chats", help="Manage chat groups and download history.")
-app.add_typer(threads.app, name="threads", help="Browse and inspect message threads.")
-app.add_typer(
-    summarize.app, name="summarize", help="Generate and preview chat summaries."
-)
+# commands that live at the root, merged into the app by create_app()
+root = typer.Typer()
 
 
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"{PACKAGE_NAME} {_pkg_version(PACKAGE_NAME)}")
         raise typer.Exit()
-
-
-@app.callback()
-def main(
-    ctx: typer.Context,
-    version: bool = typer.Option(
-        None,
-        "--version",
-        "-V",
-        callback=_version_callback,
-        is_eager=True,
-        help="Show version and exit.",
-        is_flag=True,
-    ),
-    config: Path | None = typer.Option(
-        None,
-        "--config",
-        "-c",
-        help=f"Path to config file (default: ~/.config/{PACKAGE_NAME}/config.toml)",
-    ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Enable verbose output."
-    ),
-):
-    setup_logging(verbose)
-    container = Container(config or default_config_path())
-    ctx.obj = container
-    ctx.call_on_close(container.close)
 
 
 def _get_groups(container: Container):
@@ -69,7 +34,7 @@ def _get_group_name_by_number(container: Container, number: int):
     return group_names[number - 1]
 
 
-@app.command()
+@root.command()
 def notification(
     ctx: typer.Context,
     name: str = typer.Option(None, "--chat", "-g", help="name or number of chat"),
@@ -96,13 +61,13 @@ def notification(
 
     from tgcs.telegram.notifier import Notificator
 
-    notificator = Notificator(container.tg_bot, container.path_manager)
+    notificator = Notificator(container.bot_client, container.path_manager)
     user_id = container.cfg.tg_users[0]
     for group_name in group_names:
         notificator.notify(group_name, user_id, last_days=days)
 
 
-@app.command()
+@root.command()
 def init(
     force: bool = typer.Option(
         False, "--force", "-f", help="Overwrite existing config"
@@ -137,6 +102,54 @@ def init(
         write_default_prompts()
         typer.echo(f"Prompt template created: {prompt_path}")
 
+
+def create_app(make_container=Container) -> typer.Typer:
+    """Tests pass their own container factory; production uses the real Container."""
+    app = typer.Typer(
+        no_args_is_help=True, pretty_exceptions_enable=False, rich_markup_mode=None
+    )
+    app.add_typer(auth.app, name="auth", help="Manage Telegram authentication.")
+    app.add_typer(
+        chats.app, name="chats", help="Manage chat groups and download history."
+    )
+    app.add_typer(
+        threads.app, name="threads", help="Browse and inspect message threads."
+    )
+    app.add_typer(
+        summarize.app, name="summarize", help="Generate and preview chat summaries."
+    )
+
+    @app.callback()
+    def main(
+        ctx: typer.Context,
+        version: bool = typer.Option(
+            None,
+            "--version",
+            "-V",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show version and exit.",
+            is_flag=True,
+        ),
+        config: Path | None = typer.Option(
+            None,
+            "--config",
+            "-c",
+            help=f"Path to config file (default: ~/.config/{PACKAGE_NAME}/config.toml)",
+        ),
+        verbose: bool = typer.Option(
+            False, "--verbose", "-v", help="Enable verbose output."
+        ),
+    ):
+        setup_logging(verbose)
+        ctx.obj = make_container(config or default_config_path())
+        ctx.call_on_close(ctx.obj.close)
+
+    app.add_typer(root)
+    return app
+
+
+app = create_app()
 
 if __name__ == "__main__":
     app()
