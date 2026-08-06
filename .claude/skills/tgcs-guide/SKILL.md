@@ -159,9 +159,13 @@ user.session / {phone}.session # Telegram user session
 
 ### Message format (`history.jsonl`)
 
+Field names mostly follow the [Telegram Desktop export
+format](https://core.telegram.org/import-export).
+
 ```json
-{"message_id": 629918, "sender_id": 100000000, "sender_username": "user_a",
- "message": "Text here", "date": "2025-05-22T02:39:52+00:00", "reply_to_msg_id": 629899}
+{"id": 629918, "type": "message", "date": "2025-05-22T02:39:52+00:00",
+ "from_username": "user_a", "from_id": "user100000000", "text": "Text here",
+ "reply_to_message_id": 629899, "reactions": {"👍": 3}}
 ```
 
 ### Summary format (`summary.md`)
@@ -218,13 +222,13 @@ grep -i "keyword" $DATA/example_group/history/*/history.jsonl | jq .
 grep -ri "keyword" $DATA/*/history/*/history.jsonl | jq .
 
 # All messages from a user in one group
-jq 'select(.sender_username == "username")' $DATA/example_group/history/*/history.jsonl
+jq 'select(.from_username == "username")' $DATA/example_group/history/*/history.jsonl
 
 # Count messages per date
 wc -l $DATA/example_group/history/*/history.jsonl
 
 # Find a specific message by ID
-jq 'select(.message_id == 629942)' $DATA/example_group/history/*/history.jsonl
+jq 'select(.id == 629942)' $DATA/example_group/history/*/history.jsonl
 ```
 
 ---

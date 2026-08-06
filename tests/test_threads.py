@@ -8,14 +8,14 @@ def _raw(*messages):
     return "\n".join(json.dumps(m) for m in messages)
 
 
-def _msg(message_id, reply_to_msg_id, seconds):
+def _msg(message_id, reply_to_message_id, seconds):
     # date is an ISO 8601 string (as produced by the downloader); only the
     # seconds vary so message order is obvious and deterministic
     return {
-        "message_id": message_id,
-        "reply_to_msg_id": reply_to_msg_id,
+        "id": message_id,
+        "reply_to_message_id": reply_to_message_id,
         "date": f"2020-01-01T00:00:{seconds:02d}+00:00",
-        "message": f"m{message_id}",
+        "text": f"m{message_id}",
     }
 
 
@@ -49,4 +49,4 @@ def test_build_threads_reply_chain():
     # then: one thread rooted at A, holding all three messages
     assert len(threads) == 1
     assert threads[0].thread_starter_id == 1
-    assert [m["message_id"] for m in threads[0].messages] == [1, 2, 3]
+    assert [m["id"] for m in threads[0].messages] == [1, 2, 3]

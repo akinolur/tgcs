@@ -25,8 +25,8 @@ class PrepareThreadsStep(Step):
         data = []
         for i, thread in enumerate(threads):
             messages = thread.messages
-            messages = [m["message"] for m in messages]
-            # messages = [f'{m["sender_id"]}: {m["message"]}' for m in messages]
+            messages = [m["text"] for m in messages]
+            # messages = [f'{m["from_id"]}: {m["text"]}' for m in messages]
             data.append({"thread_id": thread.id, "messages": messages})
         return data
 

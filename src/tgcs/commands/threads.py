@@ -244,7 +244,7 @@ def _show_thread(path_manager: "FilePathManager", name: str, root_id: int) -> No
                 if not line:
                     continue
                 msg = json.loads(line)
-                if msg["message_id"] == root_id:
+                if msg["id"] == root_id:
                     root_date_idx = i
                     break
         if root_date_idx is not None:
@@ -261,7 +261,7 @@ def _show_thread(path_manager: "FilePathManager", name: str, root_id: int) -> No
         typer.echo(f"Thread with root {root_id} not found.")
         raise typer.Exit(code=1)
 
-    thread_message_ids = {m["message_id"] for m in root_thread.messages}
+    thread_message_ids = {m["id"] for m in root_thread.messages}
     all_messages = list(root_thread.messages)
 
     for d in all_dates[root_date_idx + 1 :]:
@@ -274,11 +274,11 @@ def _show_thread(path_manager: "FilePathManager", name: str, root_id: int) -> No
                 if not line:
                     continue
                 msg = json.loads(line)
-                if msg.get("reply_to_msg_id") in thread_message_ids:
+                if msg.get("reply_to_message_id") in thread_message_ids:
                     all_messages.append(msg)
-                    thread_message_ids.add(msg["message_id"])
+                    thread_message_ids.add(msg["id"])
 
     all_messages.sort(key=lambda m: m["date"])
     for msg in all_messages:
-        sender = msg.get("sender_username") or str(msg.get("sender_id", "unknown"))
-        print(f"[{msg['message_id']}] {sender}: {msg.get('message', '')}")
+        sender = msg.get("from_username") or str(msg.get("from_id", "unknown"))
+        print(f"[{msg['id']}] {sender}: {msg.get('text', '')}")

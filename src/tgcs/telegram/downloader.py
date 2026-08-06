@@ -31,6 +31,22 @@ def _extract_reactions(message: "Message") -> dict[str, int]:
     return result
 
 
+def _format_from_id(message: "Message") -> str | None:
+    """Format the sender as the export does: "user123" / "channel123" / "chat123"."""
+    peer = message.from_id
+    if isinstance(peer, types.PeerUser):
+        return f"user{peer.user_id}"
+    if isinstance(peer, types.PeerChannel):
+        return f"channel{peer.channel_id}"
+    if isinstance(peer, types.PeerChat):
+        return f"chat{peer.chat_id}"
+    # anonymous admins and channel posts have no from_id; sender_id then holds
+    # the channel the message was posted as
+    if message.sender_id is None:
+        return None
+    return f"channel{message.sender_id}"
+
+
 def _read_last_line(path: str) -> bytes:
     """Return the last line of a JSONL file without reading the whole file.
 
@@ -84,21 +100,19 @@ class TelegramChatHistoryDownloader:
                     f.write(json.dumps(msg, ensure_ascii=False) + "\n")
             return len(messages)
 
-        last_known_id = json.loads(_read_last_line(filename))["message_id"]
+        last_known_id = json.loads(_read_last_line(filename))["id"]
 
-        new_messages = [m for m in messages if m["message_id"] > last_known_id]
+        new_messages = [m for m in messages if m["id"] > last_known_id]
 
         # fall back to full dedup/rewrite if there are overlapping IDs
         has_overlap = len(new_messages) < len(messages)
         if has_overlap:
             with open(filename, "r", encoding="utf-8") as f:
-                existing = {
-                    json.loads(line)["message_id"]: json.loads(line) for line in f
-                }
+                existing = {json.loads(line)["id"]: json.loads(line) for line in f}
             original_count = len(existing)
             for msg in messages:
-                existing[msg["message_id"]] = msg
-            merged = sorted(existing.values(), key=lambda x: x["message_id"])
+                existing[msg["id"]] = msg
+            merged = sorted(existing.values(), key=lambda x: x["id"])
             with open(filename, "w", encoding="utf-8") as f:
                 for msg in merged:
                     f.write(json.dumps(msg, ensure_ascii=False) + "\n")
@@ -148,20 +162,26 @@ class TelegramChatHistoryDownloader:
             first = json.loads(f.readline())
         last = json.loads(_read_last_line(filename))
         return (
-            first["message_id"],
+            first["id"],
             datetime.fromisoformat(first["date"]),
-            last["message_id"],
+            last["id"],
             datetime.fromisoformat(last["date"]),
         )
 
     def _prepare_message(self, message):
+        # field names follow the telegram desktop export format
+        # (core.telegram.org/import-export); "reactions" is our own extension,
+        # the export format has no place for it
         return {
-            "message_id": message.id,
-            "sender_id": message.sender_id,
-            "sender_username": message.sender.username if message.sender else None,
-            "message": message.message,
+            "id": message.id,
+            "type": "message",
             "date": message.date.isoformat(),
-            "reply_to_msg_id": message.reply_to_msg_id,
+            # not the export's "from": that holds a display name, this is the
+            # @username, so it gets its own name
+            "from_username": message.sender.username if message.sender else None,
+            "from_id": _format_from_id(message),
+            "text": message.message,
+            "reply_to_message_id": message.reply_to_msg_id,
             "reactions": _extract_reactions(message),
         }
 
