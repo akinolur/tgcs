@@ -40,3 +40,8 @@ data/{group_name}/
 Each step in `workflows/` implements the `Step` interface with a `process` method that
 transforms the data. When modifying the project, consider whether your changes fit into
 an existing workflow step or if a new step is needed.
+
+## Testing approach
+- for end-to-end tests use fake container with fake dependencies
+- fake container is not required for most unit tests, just fake dependencies
+- avoid monkeypatch

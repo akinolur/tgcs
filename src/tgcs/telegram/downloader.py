@@ -74,7 +74,7 @@ def _read_last_line(path: str) -> bytes:
                 f.seek(pos + idx + 1)
                 return f.readline()
 
-        # no newline found — the whole file is a single line
+        # no newline found - the whole file is a single line
         f.seek(0)
         return f.readline()
 

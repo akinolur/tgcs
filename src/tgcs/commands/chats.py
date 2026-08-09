@@ -24,65 +24,74 @@ def get_chats(ctx: typer.Context):
     _get_chats(container.path_manager)
 
 
+def _dates(path_manager: "FilePathManager", group_name: str) -> list[str]:
+    history_path = path_manager.history_folder_path(group_name)
+    if not os.path.exists(history_path):
+        return []
+    return sorted(
+        d
+        for d in os.listdir(history_path)
+        if not d.startswith(".") and os.path.isdir(os.path.join(history_path, d))
+    )
+
+
+def _last_dt(path_manager: "FilePathManager", group_name: str, dates: list[str]) -> str:
+    if not dates:
+        return "-"
+    history_file = path_manager.date_history_path(group_name, dates[-1])
+    if not os.path.exists(history_file):
+        return "-"
+    with open(history_file, "rb") as f:
+        f.seek(0, 2)
+        size = f.tell()
+        if size == 0:
+            return "-"
+        f.seek(-min(4096, size), 2)
+        chunk = f.read()
+    for line in reversed(chunk.split(b"\n")):
+        line = line.strip()
+        if line:
+            try:
+                raw = json.loads(line).get("date")
+                if not raw:
+                    continue
+                dt = datetime.fromisoformat(raw).astimezone(timezone.utc)
+                return dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                continue
+    return "-"
+
+
+def _count_lines(history_file: str) -> int:
+    with open(history_file, "rb") as f:
+        return sum(1 for line in f if line.strip())
+
+
+def _msg_count(
+    path_manager: "FilePathManager", group_name: str, dates: list[str]
+) -> int:
+    total = 0
+    for date in dates:
+        history_file = path_manager.date_history_path(group_name, date)
+        if not os.path.exists(history_file):
+            continue
+        total += _count_lines(history_file)
+    return total
+
+
 def _get_chats(path_manager: "FilePathManager") -> None:
     all_groups = sorted(path_manager.all_groups_list())
 
-    def _dates(group_name):
-        history_path = path_manager.history_folder_path(group_name)
-        if not os.path.exists(history_path):
-            return []
-        return sorted(
-            d
-            for d in os.listdir(history_path)
-            if not d.startswith(".") and os.path.isdir(os.path.join(history_path, d))
-        )
-
-    def _last_dt(group_name, dates):
-        if not dates:
-            return "—"
-        history_file = path_manager.date_history_path(group_name, dates[-1])
-        if not os.path.exists(history_file):
-            return "—"
-        with open(history_file, "rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            if size == 0:
-                return "—"
-            f.seek(-min(4096, size), 2)
-            chunk = f.read()
-        for line in reversed(chunk.split(b"\n")):
-            line = line.strip()
-            if line:
-                try:
-                    raw = json.loads(line).get("date")
-                    if not raw:
-                        continue
-                    dt = datetime.fromisoformat(raw).astimezone(timezone.utc)
-                    return dt.strftime("%Y-%m-%d %H:%M")
-                except Exception:
-                    continue
-        return "—"
-
-    def _msg_count(group_name, dates):
-        total = 0
-        for date in dates:
-            history_file = path_manager.date_history_path(group_name, date)
-            if not os.path.exists(history_file):
-                continue
-            with open(history_file, "rb") as f:
-                total += sum(1 for line in f if line.strip())
-        return total
-
     rows = []
     for name, downloading_enabled, summarization_enabled in all_groups:
-        dates = _dates(name)
+        dates = _dates(path_manager, name)
         rows.append(
             (
                 name,
                 "on" if downloading_enabled else "off",
                 "on" if summarization_enabled else "off",
-                _last_dt(name, dates),
-                _msg_count(name, dates),
+                _last_dt(path_manager, name, dates),
+                _msg_count(path_manager, name, dates),
             )
         )
     col1 = max(len("NAME"), *(len(r[0]) for r in rows)) if rows else len("NAME")
