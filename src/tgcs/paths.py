@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class FilePathManager:
@@ -65,25 +68,40 @@ class FilePathManager:
             )
             os.makedirs(date_history_folder_path, exist_ok=True)
 
-    def _flag(self, group_name: str, flag_name: str) -> bool:
+    def read_metadata(self, group_name: str) -> dict | None:
+        """Metadata of one chat, or None if it is missing or unreadable.
+
+        One corrupt file must not take down commands that walk every chat.
+        """
         metadata_path = self.group_metadata_path(group_name)
         if not os.path.exists(metadata_path):
-            return False
-        with open(metadata_path, encoding="utf-8") as f:
-            metadata = json.load(f)
+            return None
+        try:
+            with open(metadata_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError) as ex:
+            logger.warning(f"Skipping {group_name}: cannot read {metadata_path}: {ex}")
+            return None
+
+    def _flag(self, metadata: dict, flag_name: str) -> bool:
         # "enabled" is the legacy flag that used to gate both actions
         return metadata.get(flag_name, metadata.get("enabled", True))
 
     def is_downloading_enabled(self, group_name: str) -> bool:
-        return self._flag(group_name, "downloading_enabled")
+        metadata = self.read_metadata(group_name)
+        # an unknown or unreadable chat is not enabled for anything
+        return self._flag(metadata, "downloading_enabled") if metadata else False
 
     def is_summarization_enabled(self, group_name: str) -> bool:
-        return self._flag(group_name, "summarization_enabled")
+        metadata = self.read_metadata(group_name)
+        return self._flag(metadata, "summarization_enabled") if metadata else False
 
     def set_downloading_enabled(self, group_name: str, enabled: bool) -> None:
         metadata_path = self.group_metadata_path(group_name)
-        with open(metadata_path, encoding="utf-8") as f:
-            metadata = json.load(f)
+        metadata = self.read_metadata(group_name)
+        if metadata is None:
+            # nothing safe to rewrite; the warning is already logged
+            return
         legacy_enabled = metadata.pop("enabled", None)
         if legacy_enabled is not None:
             metadata.setdefault("summarization_enabled", legacy_enabled)
@@ -104,15 +122,16 @@ class FilePathManager:
             return []
         groups = []
         for group_name in os.listdir(self.base_path):
-            metadata_path = self.group_metadata_path(group_name)
-            if os.path.exists(metadata_path):
-                groups.append(
-                    (
-                        group_name,
-                        self.is_downloading_enabled(group_name),
-                        self.is_summarization_enabled(group_name),
-                    )
+            metadata = self.read_metadata(group_name)
+            if metadata is None:
+                continue
+            groups.append(
+                (
+                    group_name,
+                    self._flag(metadata, "downloading_enabled"),
+                    self._flag(metadata, "summarization_enabled"),
                 )
+            )
         return groups
 
     def additional_requirements_path(self, group_name: str) -> str:

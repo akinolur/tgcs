@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 from telethon import functions
 from telethon.tl import types
 
+from tgcs.dates import today
+
 # from telethon.errors import ChatsIdInvalidError
 
 if TYPE_CHECKING:
@@ -19,6 +21,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _LAST_LINE_CHUNK = 4096
+
+
+class FolderNotFoundError(Exception):
+    """The configured telegram folder does not exist."""
 
 
 def _extract_reactions(message: "Message") -> dict[str, int]:
@@ -125,8 +131,15 @@ class TelegramChatHistoryDownloader:
         return len(new_messages)
 
     def _create_daily_chat_history(
-        self, messages, group_name, ignore_first=True, ignore_last=True
+        self, messages, group_name, incomplete_from: date | None = None
     ):
+        """Write one history file per day.
+
+        `incomplete_from` (today) is the first day that can still receive
+        messages; it and anything after it are skipped so a partial day is
+        never written. Every earlier day is written even when it is the newest
+        data we have - a chat that went quiet must not lose its last day.
+        """
         # group messages by date
         messages_by_date = OrderedDict()
         for message in messages:
@@ -134,17 +147,11 @@ class TelegramChatHistoryDownloader:
             if date_str not in messages_by_date:
                 messages_by_date[date_str] = []
             messages_by_date[date_str].append(message)
-        # assumption: the first and last days are sometimes incomplete; drop them
-        try:
-            if ignore_first:
-                messages_by_date.popitem(last=False)
-            if ignore_last:
-                messages_by_date.popitem(last=True)
-        except KeyError:
-            # empty dict
-            return
 
+        cutoff = incomplete_from.isoformat() if incomplete_from else None
         for date_str, day_messages in messages_by_date.items():
+            if cutoff and date_str >= cutoff:
+                continue
             filename = self.path_manager.date_history_path(group_name, date_str)
             # assumption: if the file exists, its history is complete
             if os.path.exists(filename):
@@ -222,8 +229,8 @@ class TelegramChatHistoryDownloader:
         self._save_chat_metadata(group_name, entity)
 
         messages = []
-        today = datetime.now().date()
-        offset_date = today - timedelta(days=previous_days)
+        # utc: telegram timestamps and the date-named folders are both utc
+        offset_date = today() - timedelta(days=previous_days)
         if start_from_yesterday:
             offset_date = offset_date - timedelta(days=1)
         _, first_message_date, last_message_id, _ = self._get_info_about_chat_history(
@@ -268,6 +275,9 @@ class TelegramChatHistoryDownloader:
         self, group_name, date_from: date | None = None, date_to: date | None = None
     ):
         filename = self.path_manager.raw_history_path(group_name)
+        if not os.path.exists(filename):
+            # a chat with no messages yet has no raw history to split
+            return
         messages = []
         with open(filename, "r", encoding="utf-8") as f:
             for line in f:
@@ -278,9 +288,7 @@ class TelegramChatHistoryDownloader:
                 if date_to and msg_date > date_to:
                     break
                 messages.append(msg)
-        self._create_daily_chat_history(
-            messages, group_name, ignore_first=False, ignore_last=True
-        )
+        self._create_daily_chat_history(messages, group_name, incomplete_from=today())
 
     # metadata
     def download_chat_metadata(self, folder_name: str):
@@ -293,6 +301,14 @@ class TelegramChatHistoryDownloader:
             is_new = self._save_chat_metadata(group_name, entity)
             _ = self._save_additional_requirements(group_name, "")
             group_names[group_name] = is_new
+        if not group_names:
+            # an empty folder is almost always a mistake; refuse to disable
+            # every known chat because of it
+            logger.warning(
+                f"Telegram folder {folder_name!r} is empty, "
+                "leaving downloading flags untouched."
+            )
+            return group_names
         for existing_name, _, _ in self.path_manager.all_groups_list():
             if existing_name not in group_names:
                 self.path_manager.set_downloading_enabled(existing_name, False)
@@ -342,24 +358,25 @@ class TelegramChatHistoryDownloader:
     # WORK WITH FOLDER
     def get_chat_peers_from_folder(self, folder_name: str):
         folder = self._get_folder_by_name(folder_name)
-        if folder is None:
-            return []
-        # client = self._client
         chat_peers = [ch for ch in folder.include_peers]
         return chat_peers
 
     def _get_folder_by_name(self, folder_name: str):
         client = self._client
         dialog_filters = client(functions.messages.GetDialogFiltersRequest())
+        folders = [
+            f for f in dialog_filters.filters if isinstance(f, types.DialogFilter)
+        ]
         # find the folder with the matching name
-        for dialog_filter in dialog_filters.filters:
-            if (
-                isinstance(dialog_filter, types.DialogFilter)
-                and dialog_filter.title.text == folder_name
-            ):
+        for dialog_filter in folders:
+            if dialog_filter.title.text == folder_name:
                 return dialog_filter
-
-        return None  # Return None if the folder is not found
+        # a missing folder must not look like an empty one: that would disable
+        # downloading for every known chat
+        known = ", ".join(repr(f.title.text) for f in folders) or "none"
+        raise FolderNotFoundError(
+            f"Telegram folder {folder_name!r} not found. Available folders: {known}."
+        )
 
     # OTHER
     def get_message_link_prefix(self, entity):

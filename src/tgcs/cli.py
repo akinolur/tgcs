@@ -40,7 +40,11 @@ def notification(
     name: str = typer.Option(None, "--chat", "-g", help="name or number of chat"),
     all: bool = typer.Option(False, "--all", "-a", help="Notify for all groups."),
     days: int | None = typer.Option(
-        None, "--days", "-d", help="Only notify for last N days"
+        None,
+        "--days",
+        "-d",
+        min=1,
+        help="Only notify for the last N calendar days, ending today",
     ),
 ):
     """Send saved summaries as Telegram notifications."""
@@ -50,6 +54,9 @@ def notification(
         raise typer.Exit(code=1)
     if not all and not name:
         typer.echo("You must specify either --chat or --all.")
+        raise typer.Exit(code=1)
+    if not container.cfg.tg_users:
+        typer.echo(f"telegram_bot.tg_users is not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
 
     if all:
@@ -62,13 +69,16 @@ def notification(
     from tgcs.telegram.notifier import Notificator
 
     notificator = Notificator(container.bot_client, container.path_manager)
-    user_id = container.cfg.tg_users[0]
+    sent = 0
     for group_name in group_names:
-        notificator.notify(group_name, user_id, last_days=days)
+        sent += notificator.notify(group_name, container.cfg.tg_users, last_days=days)
+    if not sent:
+        typer.echo("No new summaries to notify about.")
 
 
 @root.command()
 def init(
+    ctx: typer.Context,
     force: bool = typer.Option(
         False, "--force", "-f", help="Overwrite existing config"
     ),
@@ -81,14 +91,24 @@ def init(
         write_default_summary_template,
     )
 
+    container: Container = ctx.obj
     config_path = default_config_path()
+    # init only ever creates the default layout: the prompts dir is not
+    # configurable, so a config written elsewhere would be half-wired
+    if container.config_path != config_path:
+        typer.echo(f"init always creates the default config at {config_path}.")
+        typer.echo("Drop --config, or copy the file yourself.")
+        raise typer.Exit(code=1)
     if config_path.exists() and not force:
         typer.echo(f"Config already exists: {config_path}")
     else:
         write_default_config(config_path)
         typer.echo(f"Config created: {config_path}")
 
-    template_path = default_summary_template_path()
+    # if a config already points somewhere custom, create the template there
+    template_path = (
+        container.cfg.summary_template_path or default_summary_template_path()
+    )
     if template_path.exists() and not force:
         typer.echo(f"Summary template already exists: {template_path}")
     else:

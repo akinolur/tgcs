@@ -25,7 +25,11 @@ def summarize(
     tg_notification: bool = typer.Option(False, "--tg"),
     limit: int | None = None,
     days: int | None = typer.Option(
-        None, "--days", "-d", help="Only summarize last N days"
+        None,
+        "--days",
+        "-d",
+        min=1,
+        help="Only summarize the last N calendar days, ending today",
     ),
 ):
     """Generate LLM summaries for unprocessed dates."""

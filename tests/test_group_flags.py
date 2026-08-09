@@ -124,3 +124,32 @@ def test_set_downloading_enabled_writes_only_that_flag(tmp_path):
     metadata = json.loads((tmp_path / "gone" / "metadata.json").read_text())
     assert metadata["downloading_enabled"] is False
     assert metadata["summarization_enabled"] is False
+
+
+def test_a_corrupt_metadata_file_does_not_hide_the_healthy_chats(tmp_path):
+    # given: one chat has metadata that is not valid json
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    for name, body in (("good", '{"id": 1}'), ("broken", "{not json")):
+        path_manager.create_folders_if_not_exists(name)
+        with open(path_manager.group_metadata_path(name), "w") as f:
+            f.write(body)
+
+    # when
+    groups = path_manager.all_groups_list()
+
+    # then: the broken chat is skipped, the rest still enumerate
+    assert [name for name, _, _ in groups] == ["good"]
+    assert path_manager.download_groups_list() == ["good"]
+
+
+def test_toggling_a_corrupt_chat_is_a_noop(tmp_path):
+    # given
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    path_manager.create_folders_if_not_exists("broken")
+    with open(path_manager.group_metadata_path("broken"), "w") as f:
+        f.write("{not json")
+
+    # when / then: no exception, file left alone
+    path_manager.set_downloading_enabled("broken", False)
+    with open(path_manager.group_metadata_path("broken")) as f:
+        assert f.read() == "{not json"

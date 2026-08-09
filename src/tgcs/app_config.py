@@ -65,15 +65,14 @@ DEFAULT_SUMMARY_TEMPLATE = (
 )
 
 
-_DEFAULT_CONFIG_TEMPLATE = f"""\
-# {PACKAGE_NAME} configuration
+_DEFAULT_CONFIG_TEMPLATE = """\
+# {package} configuration
 
-# Data storage directory (default: $XDG_DATA_HOME/{PACKAGE_NAME}
-#   i.e. ~/.local/share/{PACKAGE_NAME})
-# data_dir = "~/.local/share/{PACKAGE_NAME}"
+# Data storage directory (default: {data_dir})
+# data_dir = "{data_dir}"
 
 [telegram]
-# api_id = 
+# api_id =
 # api_hash = ""
 # group_folder = ""
 
@@ -88,8 +87,17 @@ _DEFAULT_CONFIG_TEMPLATE = f"""\
 
 [settings]
 # previous_days = 5
-summary_template = "~/.config/{PACKAGE_NAME}/summary.mustache"
+summary_template = "{summary_template}"
 """
+
+
+def default_config_text() -> str:
+    # rendered at write time so the paths match this machine's XDG settings
+    return _DEFAULT_CONFIG_TEMPLATE.format(
+        package=PACKAGE_NAME,
+        data_dir=_xdg_data_dir(),
+        summary_template=default_summary_template_path(),
+    )
 
 
 def load_config(config_path: Path | None = None) -> AppConfig:
@@ -145,5 +153,5 @@ def write_default_config(config_path: Path | None = None) -> Path:
     if config_path is None:
         config_path = default_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(_DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
+    config_path.write_text(default_config_text(), encoding="utf-8")
     return config_path

@@ -117,7 +117,14 @@ def get_chats_metadata(ctx: typer.Context):
     if not group_folder:
         typer.echo(f"telegram.group_folder is not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
-    _get_chats_metadata(group_folder, container.user_client, container.path_manager)
+    from tgcs.telegram.downloader import FolderNotFoundError
+
+    try:
+        _get_chats_metadata(group_folder, container.user_client, container.path_manager)
+    except FolderNotFoundError as ex:
+        typer.echo(str(ex))
+        typer.echo(f"Fix telegram.group_folder in {container.config_path}.")
+        raise typer.Exit(code=1) from ex
 
 
 def _get_chats_metadata(
@@ -151,7 +158,8 @@ def download(
         None,
         "--days",
         "-d",
-        help="Number of previous days to download (overrides PREVIOUS_DAYS env var)",
+        min=0,
+        help="Number of previous days to download (overrides settings.previous_days)",
     ),
 ):
     """Download recent message history for one or all chats."""
@@ -162,7 +170,7 @@ def download(
         raise typer.Exit(code=1)
     elif all:
         logger.info("Downloading all groups")
-        _download_all(
+        failed = _download_all(
             user_client=container.user_client,
             path_manager=container.path_manager,
             default_previous_days=container.cfg.previous_days,
@@ -170,13 +178,17 @@ def download(
         )
     else:
         logger.info(f"Downloading group: {group_name}")
-        _download_group(
+        failed = _download_group(
             user_client=container.user_client,
             path_manager=container.path_manager,
             group_name=group_name,
             previous_days=previous_days,
             default_previous_days=container.cfg.previous_days,
         )
+    if failed:
+        # cron must not see a green run when chats were skipped
+        typer.echo(f"{failed} chat(s) failed to download.", err=True)
+        raise typer.Exit(code=1)
 
 
 def _chat_peer_from_metadata(metadata: dict):
@@ -187,27 +199,40 @@ def _chat_peer_from_metadata(metadata: dict):
     return InputPeerChannel(chat_id, access_hash) if access_hash else chat_id
 
 
-def _download_group(
-    user_client: "TelegramClient",
-    path_manager: "FilePathManager",
-    group_name: str,
-    previous_days: int | None = None,
-    default_previous_days: int = 0,
-) -> None:
-    from tgcs.telegram.downloader import TelegramChatHistoryDownloader
-
-    days = previous_days if previous_days is not None else default_previous_days
-    tg_downloader = TelegramChatHistoryDownloader(user_client, path_manager)
+def _download_one(
+    tg_downloader, path_manager: "FilePathManager", group_name: str, days: int
+) -> bool:
+    """Download one chat. Never raises, so one bad chat cannot stop the rest."""
+    metadata_path = path_manager.group_metadata_path(group_name)
+    if not os.path.exists(metadata_path):
+        logger.error(f"{group_name}: unknown chat. Run 'tgcs chats update' first.")
+        return False
     try:
-        metadata_path = path_manager.group_metadata_path(group_name)
         with open(metadata_path) as f:
             metadata = json.load(f)
         name, count = tg_downloader.download_chat_history(
             _chat_peer_from_metadata(metadata), days
         )
         logger.info(f"{name}: {count} new messages")
+        return True
     except Exception as ex:
-        logger.error(str(ex))
+        logger.error(f"{group_name}: {ex}")
+        return False
+
+
+def _download_group(
+    user_client: "TelegramClient",
+    path_manager: "FilePathManager",
+    group_name: str,
+    previous_days: int | None = None,
+    default_previous_days: int = 0,
+) -> int:
+    """Returns the number of chats that failed."""
+    from tgcs.telegram.downloader import TelegramChatHistoryDownloader
+
+    days = previous_days if previous_days is not None else default_previous_days
+    tg_downloader = TelegramChatHistoryDownloader(user_client, path_manager)
+    return 0 if _download_one(tg_downloader, path_manager, group_name, days) else 1
 
 
 def _download_all(
@@ -215,22 +240,18 @@ def _download_all(
     path_manager: "FilePathManager",
     default_previous_days: int,
     previous_days: int | None = None,
-) -> None:
+) -> int:
+    """Returns the number of chats that failed."""
     from tgcs.telegram.downloader import TelegramChatHistoryDownloader
 
     days = previous_days if previous_days is not None else default_previous_days
     tg_downloader = TelegramChatHistoryDownloader(user_client, path_manager)
-    group_names = path_manager.download_groups_list()
-    try:
-        for tg_chat in group_names:
-            if not tg_chat:
-                continue
-            metadata_path = path_manager.group_metadata_path(tg_chat)
-            with open(metadata_path) as f:
-                metadata = json.load(f)
-            name, count = tg_downloader.download_chat_history(
-                _chat_peer_from_metadata(metadata), days
-            )
-            logger.info(f"{name}: {count} new messages")
-    except Exception as ex:
-        logger.error(str(ex))
+    group_names = [name for name in path_manager.download_groups_list() if name]
+    if not group_names:
+        logger.warning("No chats with downloading enabled. Run 'tgcs chats update'.")
+        return 0
+    failed = 0
+    for tg_chat in group_names:
+        if not _download_one(tg_downloader, path_manager, tg_chat, days):
+            failed += 1
+    return failed

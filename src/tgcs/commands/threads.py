@@ -1,11 +1,11 @@
 import json
 import os
-from datetime import date, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Optional
 
 import typer
 
+from tgcs.dates import cutoff
 from tgcs.threads import build_threads
 
 if TYPE_CHECKING:
@@ -70,7 +70,9 @@ def list_threads(
         None, "--from", help="range start YYYY-MM-DD"
     ),
     to_date: Optional[str] = typer.Option(None, "--to", help="range end YYYY-MM-DD"),
-    days: Optional[int] = typer.Option(None, "--days", help="last N calendar days"),
+    days: Optional[int] = typer.Option(
+        None, "--days", min=1, help="last N calendar days, ending today"
+    ),
     min_msgs: int = typer.Option(4, "--min-msgs", help="minimum messages per thread"),
     sort_by: SortBy = typer.Option(
         SortBy.date, "--sort", help="sort rows by date or count"
@@ -125,8 +127,7 @@ def _list_threads(
     elif from_date is not None:
         selected_dates = [d for d in all_dates if from_date <= d <= to_date]
     elif days is not None:
-        cutoff = (date.today() - timedelta(days=days - 1)).isoformat()
-        selected_dates = [d for d in all_dates if d >= cutoff]
+        selected_dates = [d for d in all_dates if d >= cutoff(days)]
     else:
         selected_dates = [all_dates[-1]]
 

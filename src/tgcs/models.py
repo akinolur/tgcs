@@ -6,7 +6,8 @@ class Thread:
     messages: list[dict]
     thread_starter_id: int
     link_prefix: str | None = None
-    id: str | None = None
+    # 1-based position handed to the llm, not the telegram message id
+    id: int | None = None
     name: str | None = None
 
     def __len__(self):

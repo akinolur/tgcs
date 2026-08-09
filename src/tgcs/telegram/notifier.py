@@ -1,7 +1,8 @@
 import logging
 import os
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
+
+from tgcs.dates import cutoff
 
 if TYPE_CHECKING:
     from telethon.sync import TelegramClient
@@ -28,8 +29,7 @@ class Notificator:
         )
 
         if last_days is not None:
-            cutoff = (datetime.today() - timedelta(days=last_days)).strftime("%Y-%m-%d")
-            all_dates = [d for d in all_dates if d >= cutoff]
+            all_dates = [d for d in all_dates if d >= cutoff(last_days)]
 
         result = []
         for date in all_dates:
@@ -53,8 +53,12 @@ class Notificator:
             logger.error(f"Failed to send message to {user_id}: {e}")
             return False
 
-    def notify(self, group_name, user_id, last_days=None):
+    def notify(self, group_name, user_ids, last_days=None):
         entries = self.load_unnotified_summaries(group_name, last_days)
         for date, summary in entries:
-            if self.send_summary(user_id, summary):
+            results = [self.send_summary(user_id, summary) for user_id in user_ids]
+            # mark notified only when every recipient got it, so a failed send
+            # can be retried on the next run
+            if results and all(results):
                 self.mark_notified(group_name, date)
+        return len(entries)

@@ -1,8 +1,9 @@
+import fcntl
 import json
 import logging
 import os
-from datetime import datetime, timedelta
 
+from tgcs.dates import cutoff
 from tgcs.paths import FilePathManager
 from tgcs.workflows.base import WorkflowExecutor
 
@@ -13,6 +14,9 @@ class SummaryCreator:
     def __init__(self, path_manager: FilePathManager, workflow: WorkflowExecutor):
         self.path_manager = path_manager
         self.workflow = workflow
+        # open lock descriptors by (group, date); the flock lives as long as
+        # the descriptor does
+        self._lock_fds: dict[tuple[str, str], int] = {}
 
     def _is_date_processed(self, group_name, date):
         """
@@ -49,8 +53,7 @@ class SummaryCreator:
             date for date in all_dates if not self._is_date_processed(group_name, date)
         ]
         if last_days is not None:
-            cutoff = (datetime.today() - timedelta(days=last_days)).strftime("%Y-%m-%d")
-            unprocessed_dates = [d for d in unprocessed_dates if d >= cutoff]
+            unprocessed_dates = [d for d in unprocessed_dates if d >= cutoff(last_days)]
         return unprocessed_dates
 
     def _acquire_lock(self, group_name, date):
@@ -58,19 +61,33 @@ class SummaryCreator:
         Acquire a lock for processing the date
         """
         lock_file_path = self.path_manager.lock_path(group_name, date)
-        if os.path.exists(lock_file_path):
+        fd = os.open(lock_file_path, os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            # the kernel drops this when the holder exits or is killed, so a
+            # crashed run cannot leave a lock that blocks the date forever
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            logger.info(f"[{date}] {group_name}: locked by another run, skipping")
             return False
-        with open(lock_file_path, "w") as lock_file:
-            lock_file.write(str(os.getpid()))
+        os.ftruncate(fd, 0)
+        os.write(fd, str(os.getpid()).encode())
+        self._lock_fds[(group_name, date)] = fd
         return True
 
     def _release_lock(self, group_name, date):
         """
         Release the lock for processing the date
         """
-        lock_file_path = self.path_manager.lock_path(group_name, date)
-        if os.path.exists(lock_file_path):
-            os.remove(lock_file_path)
+        fd = self._lock_fds.pop((group_name, date), None)
+        if fd is None:
+            return
+        # the file itself is kept: unlinking it while another run has the same
+        # inode open would let that run lock an orphaned inode and process the
+        # date in parallel. closing the descriptor releases the flock, which is
+        # what actually guards the date
+        os.ftruncate(fd, 0)
+        os.close(fd)
 
     def process_unprocessed_dates(self, group_name, n=None, last_days=None):
         """

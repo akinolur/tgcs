@@ -32,6 +32,7 @@ def thread_workflow(
             RepairJsonStep(),
             PostProcessStep(
                 template_path=template_path,
+                path_manager=path_manager,
             ),
         ]
     )
@@ -58,6 +59,7 @@ def thread_workflow_tg_notify(
             RepairJsonStep(),
             PostProcessStep(
                 template_path=template_path,
+                path_manager=path_manager,
             ),
             TgNotificationStep(
                 notificator,
