@@ -551,10 +551,8 @@ summary = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "chevron" },
-    { name = "json-repair" },
-    { name = "openai" },
     { name = "pytest" },
+    { name = "tgcs", extra = ["summary"] },
 ]
 
 [package.metadata]
@@ -571,10 +569,8 @@ provides-extras = ["summary"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "chevron" },
-    { name = "json-repair" },
-    { name = "openai" },
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "tgcs", extras = ["summary"] },
 ]
 
 [[package]]

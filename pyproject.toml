@@ -29,9 +29,7 @@ summary = [
 dev = [
     "pytest>=9.1.1",
     # the summary extra, so tests can cover the summarization workflow
-    "openai",
-    "json-repair",
-    "chevron",
+    "tgcs[summary]",
 ]
 
 [tool.uv]
