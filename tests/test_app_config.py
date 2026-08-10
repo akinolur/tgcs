@@ -2,7 +2,7 @@ from textwrap import dedent
 
 import pytest
 
-from tgcs.app_config import load_config
+from tgcs.app_config import DEFAULT_GROUP_FOLDER, load_config
 
 
 def test_load_config_partial_sections(tmp_path):
@@ -15,6 +15,7 @@ def test_load_config_partial_sections(tmp_path):
 
     # then
     assert cfg.api_id == 12345
+    assert cfg.group_folder == DEFAULT_GROUP_FOLDER
     assert cfg.llm_api_key is None
     assert cfg.llm_model is None
     assert cfg.llm_url is None

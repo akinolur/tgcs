@@ -2,7 +2,11 @@ import stat
 
 from typer.testing import CliRunner
 
-from tgcs.app_config import default_config_text, default_summary_template_path
+from tgcs.app_config import (
+    DEFAULT_GROUP_FOLDER,
+    default_config_text,
+    default_summary_template_path,
+)
 from tgcs.cli import app
 
 
@@ -66,4 +70,5 @@ def test_generated_config_points_at_the_real_template_path():
 
     # then
     assert f'summary_template = "{default_summary_template_path()}"' in text
+    assert f'# group_folder = "{DEFAULT_GROUP_FOLDER}"' in text
     assert "{" not in text, "no unrendered placeholders left"

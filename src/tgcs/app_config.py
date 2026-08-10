@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 PACKAGE_NAME = "tgcs"
+DEFAULT_GROUP_FOLDER = PACKAGE_NAME
 
 
 @dataclass
@@ -11,7 +12,7 @@ class AppConfig:
     data_dir: Path
     api_id: int | None = None
     api_hash: str | None = None
-    group_folder: str | None = None
+    group_folder: str = DEFAULT_GROUP_FOLDER
     bot_token: str | None = None
     tg_users: list[str] = field(default_factory=list)
     llm_api_key: str | None = None
@@ -74,7 +75,7 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 [telegram]
 # api_id =
 # api_hash = ""
-# group_folder = ""
+# group_folder = "{group_folder}"
 
 [telegram_bot]
 # bot_token =
@@ -96,6 +97,7 @@ def default_config_text() -> str:
     return _DEFAULT_CONFIG_TEMPLATE.format(
         package=PACKAGE_NAME,
         data_dir=_xdg_data_dir(),
+        group_folder=DEFAULT_GROUP_FOLDER,
         summary_template=default_summary_template_path(),
     )
 
@@ -118,7 +120,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         if "api_id" in tg:
             kwargs["api_id"] = int(tg["api_id"])
         kwargs["api_hash"] = tg.get("api_hash")
-        kwargs["group_folder"] = tg.get("group_folder")
+        kwargs["group_folder"] = tg.get("group_folder", DEFAULT_GROUP_FOLDER)
         tg_bot = raw.get("telegram_bot", {})
         kwargs["bot_token"] = tg_bot.get("bot_token")
         kwargs["tg_users"] = tg_bot.get("tg_users", [])
