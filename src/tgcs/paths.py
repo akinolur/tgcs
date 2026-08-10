@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class FilePathManager:
     def __init__(self, base_path: str = "data", prompt_dir: str = "prompts"):
         self.base_path = base_path
-        os.makedirs(base_path, exist_ok=True)
+        os.makedirs(base_path, mode=0o700, exist_ok=True)
         self.prompt_dir = prompt_dir
         self.history_folder_name = "history"
         self.threads_folder_name = "threads"

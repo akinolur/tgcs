@@ -1,3 +1,5 @@
+import stat
+
 from typer.testing import CliRunner
 
 from tgcs.app_config import default_config_text, default_summary_template_path
@@ -22,6 +24,8 @@ def test_init_creates_the_default_layout(tmp_path):
     assert (config_dir / "config.toml").exists()
     assert (config_dir / "summary.mustache").exists()
     assert (config_dir / "prompts" / "summary.toml").exists()
+    assert stat.S_IMODE(config_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE((config_dir / "config.toml").stat().st_mode) == 0o600
 
 
 def test_init_rejects_a_custom_config_path(tmp_path):
@@ -44,6 +48,7 @@ def test_init_does_not_overwrite_an_existing_config(tmp_path):
     config_path = tmp_path / "config" / "tgcs" / "config.toml"
     config_path.parent.mkdir(parents=True)
     config_path.write_text("# mine\n", encoding="utf-8")
+    config_path.chmod(0o644)
 
     # when
     result = CliRunner().invoke(app, ["init"], env=_isolated(tmp_path))
@@ -51,6 +56,7 @@ def test_init_does_not_overwrite_an_existing_config(tmp_path):
     # then
     assert result.exit_code == 0, result.output
     assert config_path.read_text() == "# mine\n"
+    assert stat.S_IMODE(config_path.stat().st_mode) == 0o644
     assert "already exists" in result.output
 
 

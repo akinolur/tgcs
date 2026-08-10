@@ -50,7 +50,7 @@ def default_prompts_dir() -> Path:
 def write_default_prompts(prompts_dir: Path | None = None) -> Path:
     if prompts_dir is None:
         prompts_dir = default_prompts_dir()
-    prompts_dir.mkdir(parents=True, exist_ok=True)
+    prompts_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     src = Path(__file__).parent / "prompts" / "summary.toml"
     dest = prompts_dir / "summary.toml"
     dest.write_bytes(src.read_bytes())
@@ -144,7 +144,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
 def write_default_summary_template(template_path: Path | None = None) -> Path:
     if template_path is None:
         template_path = default_summary_template_path()
-    template_path.parent.mkdir(parents=True, exist_ok=True)
+    template_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     template_path.write_text(DEFAULT_SUMMARY_TEMPLATE, encoding="utf-8")
     return template_path
 
@@ -152,6 +152,10 @@ def write_default_summary_template(template_path: Path | None = None) -> Path:
 def write_default_config(config_path: Path | None = None) -> Path:
     if config_path is None:
         config_path = default_config_path()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(default_config_text(), encoding="utf-8")
+    config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    old_umask = os.umask(0o177)
+    try:
+        config_path.write_text(default_config_text(), encoding="utf-8")
+    finally:
+        os.umask(old_umask)
     return config_path

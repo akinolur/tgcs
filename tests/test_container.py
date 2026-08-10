@@ -1,3 +1,4 @@
+import stat
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from tgcs.container import (
     create_llm_client,
     create_user_client,
 )
+from tgcs.paths import FilePathManager
 
 CONFIG_PATH = Path("/etc/tgcs.toml")
 FULL_CONFIG = """\
@@ -169,3 +171,11 @@ def test_clients_are_cached_and_closed_in_reverse_order(tmp_path):
         "bot:disconnect",
         "user:disconnect",
     ]
+
+
+def test_path_manager_creates_private_data_directory(tmp_path):
+    data_dir = tmp_path / "data"
+
+    FilePathManager(str(data_dir))
+
+    assert stat.S_IMODE(data_dir.stat().st_mode) == 0o700
