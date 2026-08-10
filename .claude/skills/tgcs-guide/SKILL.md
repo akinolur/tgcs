@@ -35,7 +35,7 @@ summary_template = "~/.config/tgcs/summary.mustache" # Mustache template for sum
 
 ## CLI Reference
 
-Entry point: `tgcs`  
+Entry point: `tgcs`
 Global options: `--version/-V`, `--config/-c PATH`, `--verbose/-v`
 
 ### `tgcs chats`

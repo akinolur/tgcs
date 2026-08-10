@@ -11,7 +11,7 @@ Telegram chat history downloader and summarizer
 
 ## Architecture
 
-Project features can be divided into 2 groups: 
+Project features can be divided into 2 groups:
 - core: cli, telegram integration, work with history
 - summarization
 These groups must be strictly divided and almost independent. User must be able to install core dependencies without summarization dependencies and use core cli commands.

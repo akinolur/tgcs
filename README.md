@@ -43,7 +43,7 @@ tgcs threads ls --chat GROUP_NAME    # display threads
 ```
 
 Config lives in `~/.config/tgcs/config.toml` (set `[telegram]`, `[llm]`, and
-`[telegram_bot]` sections). 
+`[telegram_bot]` sections).
 Data and telegram session files live in `~/.local/share/tgcs`.
 
 ## Usage ideas
