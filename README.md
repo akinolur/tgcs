@@ -13,6 +13,11 @@ Useful for a daily digest or as a data source for an AI agent.
 - Telegram bot notifications for daily summaries
 - LLM thread names and summaries (OpenAI-compatible APIs, e.g., Groq)
 
+## Security note
+
+tgcs uses a Telegram user session that can remain authorized until it is revoked. The session grants broad access to your Telegram account, so keep the `.session` file secure and never share it. When uninstalling tgcs, delete the file and revoke the session under Telegram Settings > Devices.
+
+tgcs manages Telegram API requests automatically, but Telegram may still impose a [`FLOOD_WAIT`](https://core.telegram.org/api/errors#420-flood) interval before an action can be repeated. Telegram also warns that API abuse, such as flooding or spam, can result in a [permanent ban](https://core.telegram.org/api/obtaining_api_id#using-the-api-id). Use tgcs in accordance with Telegram's [API Terms of Service](https://core.telegram.org/api/terms).
 
 ## Install
 
@@ -28,13 +33,13 @@ uv tool install --editable .
 Get your Telegram `api_id` and `api_hash`. [Instructions](https://core.telegram.org/api/obtaining_api_id)
 
 ```bash
-tgcs init                  # create config + templates
+tgcs init                            # create config + templates
 # edit ~/.config/tgcs/config.toml with your credentials (api_id, api_hash)
-tgcs auth login            # authenticate (QR code)
+tgcs auth login                      # authenticate (QR code)
 # in Telegram client: create folder "tgcs" and place some groups there
-tgcs chats update          # fetch chat metadata
-tgcs chats download --all  # download history
-tgcs summarize --all       # generate summaries
+tgcs chats update                    # fetch chat metadata
+tgcs chats download --all --days 30  # download the last 30 days
+tgcs threads ls --chat GROUP_NAME    # display threads
 ```
 
 Config lives in `~/.config/tgcs/config.toml` (set `[telegram]`, `[llm]`, and
