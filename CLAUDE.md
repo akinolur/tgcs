@@ -18,7 +18,10 @@ These groups must be strictly divided and almost independent. User must be able 
 
 **File Management**: `FilePathManager` handles all file paths and directory structure.
 
-Data layout:
+Each chat picks one of two history layouts (`Layout` in `layouts.py`), from its own
+`metadata.json` `layout` key or, when absent, `[settings] layout` in the config.
+
+`daily` (the default) splits the raw history into one folder per date:
 ```
 {data_dir}/
   user.session
@@ -36,6 +39,23 @@ Data layout:
         notified
     threads/
       {date}-{root_id}.jsonl
+```
+
+`single` is for low-traffic chats, where per-day folders would each hold a message or two.
+The download is never split: the whole chat stays in `raw_chat_history.jsonl`, and
+`threads/` files are keyed `all-{root_id}.jsonl`. Summarization is a daily-layout feature:
+`summarize` and `notification` skip a `single` chat outright, so date folders left over
+from a previous `daily` life are never processed again. Switching back to `daily` rebuilds
+every date folder from the raw file (`chats layout ... daily`), not just the last download
+window.
+```
+{data_dir}/
+  {group_name}/
+    metadata.json
+    history/
+      raw_chat_history.jsonl
+    threads/
+      all-{root_id}.jsonl
 ```
 
 `metadata.json` holds two independent flags, both default `true`:

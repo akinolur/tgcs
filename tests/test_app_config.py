@@ -3,6 +3,7 @@ from textwrap import dedent
 import pytest
 
 from tgcs.app_config import DEFAULT_GROUP_FOLDER, load_config
+from tgcs.layouts import Layout
 
 
 def test_load_config_partial_sections(tmp_path):
@@ -20,6 +21,29 @@ def test_load_config_partial_sections(tmp_path):
     assert cfg.llm_model is None
     assert cfg.llm_url is None
     assert cfg.previous_days == 0
+    assert cfg.layout is Layout.DAILY
+
+
+def test_load_config_layout(tmp_path):
+    # given
+    path = tmp_path / "config.toml"
+    path.write_text('[settings]\nlayout = "single"\n', encoding="utf-8")
+
+    # when
+    cfg = load_config(path)
+
+    # then
+    assert cfg.layout is Layout.SINGLE
+
+
+def test_load_config_unknown_layout_raises(tmp_path):
+    # given: a typo must not silently fall back to daily for every chat
+    path = tmp_path / "config.toml"
+    path.write_text('[settings]\nlayout = "weekly"\n', encoding="utf-8")
+
+    # when / then
+    with pytest.raises(ValueError):
+        load_config(path)
 
 
 def test_load_config_full_file(tmp_path):

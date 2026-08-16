@@ -2,9 +2,11 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, assert_never
 
 import typer
+
+from tgcs.layouts import Layout
 
 if TYPE_CHECKING:
     from telethon.sync import TelegramClient
@@ -35,10 +37,30 @@ def _dates(path_manager: "FilePathManager", group_name: str) -> list[str]:
     )
 
 
-def _last_dt(path_manager: "FilePathManager", group_name: str, dates: list[str]) -> str:
-    if not dates:
+def _history_files(
+    path_manager: "FilePathManager", group_name: str, layout: Layout
+) -> list[str]:
+    """History files of one chat, oldest first.
+
+    The single layout keeps everything in the raw file; the daily layout has one
+    file per date folder.
+    """
+    if layout is Layout.SINGLE:
+        raw_path = path_manager.raw_history_path(group_name)
+        return [raw_path] if os.path.exists(raw_path) else []
+    elif layout is Layout.DAILY:
+        return [
+            path_manager.date_history_path(group_name, date)
+            for date in _dates(path_manager, group_name)
+        ]
+    else:
+        assert_never(layout)
+
+
+def _last_dt(history_files: list[str]) -> str:
+    if not history_files:
         return "-"
-    history_file = path_manager.date_history_path(group_name, dates[-1])
+    history_file = history_files[-1]
     if not os.path.exists(history_file):
         return "-"
     with open(history_file, "rb") as f:
@@ -67,12 +89,9 @@ def _count_lines(history_file: str) -> int:
         return sum(1 for line in f if line.strip())
 
 
-def _msg_count(
-    path_manager: "FilePathManager", group_name: str, dates: list[str]
-) -> int:
+def _msg_count(history_files: list[str]) -> int:
     total = 0
-    for date in dates:
-        history_file = path_manager.date_history_path(group_name, date)
+    for history_file in history_files:
         if not os.path.exists(history_file):
             continue
         total += _count_lines(history_file)
@@ -84,29 +103,67 @@ def _get_chats(path_manager: "FilePathManager") -> None:
 
     rows = []
     for name, downloading_enabled, summarization_enabled in all_groups:
-        dates = _dates(path_manager, name)
+        layout = path_manager.layout(name)
+        history_files = _history_files(path_manager, name, layout)
         rows.append(
             (
                 name,
+                str(layout),
                 "on" if downloading_enabled else "off",
                 "on" if summarization_enabled else "off",
-                _last_dt(path_manager, name, dates),
-                _msg_count(path_manager, name, dates),
+                _last_dt(history_files),
+                _msg_count(history_files),
             )
         )
     col1 = max(len("NAME"), *(len(r[0]) for r in rows)) if rows else len("NAME")
-    col5 = (
-        max(len("MESSAGES"), *(len(str(r[4])) for r in rows))
+    col6 = (
+        max(len("MESSAGES"), *(len(str(r[5])) for r in rows))
         if rows
         else len("MESSAGES")
     )
     print(
-        f"{'NAME':<{col1}}  {'DOWNLOAD':<8}  {'SUMMARY':<7}  {'LAST MESSAGE':<16}  {'MESSAGES':>{col5}}"  # noqa: E501
+        f"{'NAME':<{col1}}  {'LAYOUT':<6}  {'DOWNLOAD':<8}  {'SUMMARY':<7}  {'LAST MESSAGE':<16}  {'MESSAGES':>{col6}}"  # noqa: E501
     )
-    for name, download, summary, last_dt, msg_count in rows:
+    for name, layout, download, summary, last_dt, msg_count in rows:
         print(
-            f"{name:<{col1}}  {download:<8}  {summary:<7}  {last_dt:<16}  {msg_count:>{col5}}"  # noqa: E501
+            f"{name:<{col1}}  {layout:<6}  {download:<8}  {summary:<7}  {last_dt:<16}  {msg_count:>{col6}}"  # noqa: E501
         )
+
+
+@app.command(name="layout")
+def chat_layout(
+    ctx: typer.Context,
+    name: str = typer.Option(..., "--chat", "-g", help="chat name"),
+    value: Optional[Layout] = typer.Argument(
+        None, help="new layout; omit to show the current one"
+    ),
+):
+    """Show or set the history layout of a chat."""
+    container: "Container" = ctx.obj
+    path_manager = container.path_manager
+    if value is None:
+        typer.echo(str(path_manager.layout(name)))
+        return
+    previous = path_manager.layout(name)
+    if not path_manager.set_layout(name, value):
+        typer.echo(f"{name}: unknown chat. Run 'tgcs chats update' first.")
+        raise typer.Exit(code=1)
+    typer.echo(f"{name}: layout set to {str(value)}")
+    if previous is Layout.SINGLE and value is Layout.DAILY:
+        # the single layout never wrote date folders, and the next download only
+        # splits its own window, so backfill the whole raw file now
+        typer.echo(
+            f"Rebuilding date folders from {path_manager.raw_history_path(name)}"
+        )
+        _split_raw_history(path_manager, name)
+
+
+def _split_raw_history(path_manager: "FilePathManager", group_name: str) -> None:
+    # imported lazily: splitting is pure file work, but the module pulls in telethon
+    from tgcs.telegram.downloader import TelegramChatHistoryDownloader
+
+    downloader = TelegramChatHistoryDownloader(client=None, path_manager=path_manager)
+    downloader._create_daily_chat_history_from_raw_history(group_name)
 
 
 @app.command(name="update")

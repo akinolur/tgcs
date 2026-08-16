@@ -9,6 +9,7 @@ from telethon import functions
 from telethon.tl import types
 
 from tgcs.dates import today
+from tgcs.layouts import Layout
 
 # from telethon.errors import ChatsIdInvalidError
 
@@ -85,6 +86,72 @@ def _read_last_line(path: str) -> bytes:
         return f.readline()
 
 
+def _truncate_partial_tail(path: str) -> bool:
+    """Drop a trailing partial record left behind by an interrupted append.
+
+    An append can only ever land as a prefix of what it meant to write, so the
+    damage is confined to the bytes after the last newline. Without this repair
+    one killed run would leave an unparseable last line and `_read_last_line`
+    would raise on every later download of the chat - fatal under the single
+    layout, where this file is the only copy of the history.
+    """
+    with open(path, "rb+") as f:
+        f.seek(0, os.SEEK_END)
+        end = f.tell()
+        if end == 0:
+            return False
+        f.seek(end - 1)
+        if f.read(1) == b"\n":
+            return False
+
+        pos = end
+        while pos > 0:
+            chunk = min(_LAST_LINE_CHUNK, pos)
+            pos -= chunk
+            f.seek(pos)
+            idx = f.read(chunk).rfind(b"\n")
+            if idx != -1:
+                f.truncate(pos + idx + 1)
+                return True
+
+        # no newline anywhere - the whole file is one partial record
+        f.truncate(0)
+        return True
+
+
+def _dump_jsonl(messages) -> str:
+    return "".join(json.dumps(msg, ensure_ascii=False) + "\n" for msg in messages)
+
+
+def _fsync_dir(path: str) -> None:
+    """Persist a directory entry, so a rename survives a power loss."""
+    fd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _append_jsonl(path: str, messages) -> None:
+    """Append records in one write, then fsync so they are actually on disk."""
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(_dump_jsonl(messages))
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def _rewrite_jsonl(path: str, messages) -> None:
+    """Replace the file atomically via a tmp sibling, so a crash cannot destroy it."""
+    # the pid keeps two concurrent runs from writing the same tmp file
+    tmp_path = f"{path}.{os.getpid()}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write(_dump_jsonl(messages))
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
+    _fsync_dir(path)
+
+
 class TelegramChatHistoryDownloader:
     def __init__(
         self,
@@ -101,12 +168,17 @@ class TelegramChatHistoryDownloader:
         if not messages:
             return 0
         if not os.path.exists(filename):
-            with open(filename, "w", encoding="utf-8") as f:
-                for msg in messages:
-                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            _rewrite_jsonl(filename, messages)
             return len(messages)
 
-        last_known_id = json.loads(_read_last_line(filename))["id"]
+        if _truncate_partial_tail(filename):
+            logger.warning(f"{group_name}: dropped a partial record from {filename}")
+        last_line = _read_last_line(filename)
+        if not last_line.strip():
+            # empty, or emptied by the repair above
+            _rewrite_jsonl(filename, messages)
+            return len(messages)
+        last_known_id = json.loads(last_line)["id"]
 
         new_messages = [m for m in messages if m["id"] > last_known_id]
 
@@ -119,15 +191,11 @@ class TelegramChatHistoryDownloader:
             for msg in messages:
                 existing[msg["id"]] = msg
             merged = sorted(existing.values(), key=lambda x: x["id"])
-            with open(filename, "w", encoding="utf-8") as f:
-                for msg in merged:
-                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            _rewrite_jsonl(filename, merged)
             return len(merged) - original_count
 
         if new_messages:
-            with open(filename, "a", encoding="utf-8") as f:
-                for msg in new_messages:
-                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            _append_jsonl(filename, new_messages)
         return len(new_messages)
 
     def _create_daily_chat_history(
@@ -157,9 +225,9 @@ class TelegramChatHistoryDownloader:
             if os.path.exists(filename):
                 continue
             self.path_manager.create_folders_if_not_exists(group_name, date_str)
-            with open(filename, "w", encoding="utf-8") as f:
-                for msg in day_messages:
-                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            # atomic: a day file is never rewritten once it exists, so a crash
+            # mid-write would leave a truncated day forever
+            _rewrite_jsonl(filename, day_messages)
 
     def _get_info_about_chat_history(self, group_name):
         filename = self.path_manager.raw_history_path(group_name)
@@ -266,9 +334,11 @@ class TelegramChatHistoryDownloader:
         self.path_manager.create_folders_if_not_exists(group_name)
         new_messages_count = self._update_raw_chat_history(messages, group_name)
         logger.debug(f"new messages: {new_messages_count}")
-        self._create_daily_chat_history_from_raw_history(
-            group_name, date_from=offset_date
-        )
+        # the single layout keeps the whole chat in the raw file and never splits it
+        if self.path_manager.layout(group_name) is not Layout.SINGLE:
+            self._create_daily_chat_history_from_raw_history(
+                group_name, date_from=offset_date
+            )
         return group_name, new_messages_count
 
     def _create_daily_chat_history_from_raw_history(
@@ -329,21 +399,18 @@ class TelegramChatHistoryDownloader:
         legacy_enabled = existing.pop("enabled", None)
         if legacy_enabled is not None:
             existing.setdefault("summarization_enabled", legacy_enabled)
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    **existing,
-                    "id": entity.id,
-                    "access_hash": getattr(entity, "access_hash", 0),
-                    "title": entity.title,
-                    "username": entity.username,
-                    "link_prefix": link_prefix,
-                    "downloading_enabled": True,
-                },
-                f,
-                ensure_ascii=False,
-                indent=4,
-            )
+        self.path_manager.write_metadata(
+            group_name,
+            {
+                **existing,
+                "id": entity.id,
+                "access_hash": getattr(entity, "access_hash", 0),
+                "title": entity.title,
+                "username": entity.username,
+                "link_prefix": link_prefix,
+                "downloading_enabled": True,
+            },
+        )
         return is_new
 
     def _save_additional_requirements(self, group_name, additional_requirements):

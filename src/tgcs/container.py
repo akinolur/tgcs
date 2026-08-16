@@ -132,6 +132,7 @@ class Container:
         return FilePathManager(
             base_path=str(self.cfg.data_dir),
             prompt_dir=str(default_prompts_dir()),
+            default_layout=self.cfg.layout,
         )
 
     @cached_property

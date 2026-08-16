@@ -4,6 +4,7 @@ import logging
 import os
 
 from tgcs.dates import cutoff
+from tgcs.layouts import Layout
 from tgcs.paths import FilePathManager
 from tgcs.workflows.base import WorkflowExecutor
 
@@ -44,6 +45,12 @@ class SummaryCreator:
         """
         Get dates that have not been processed yet
         """
+        if self.path_manager.layout(group_name) is Layout.SINGLE:
+            # a chat switched over from the daily layout keeps its old date
+            # folders; summarizing them again would burn llm calls and notify
+            # about history the user already saw
+            return []
+
         group_path = self.path_manager.history_folder_path(group_name)
         if not os.path.exists(group_path):
             return []

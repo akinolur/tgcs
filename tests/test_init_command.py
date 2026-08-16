@@ -8,6 +8,7 @@ from tgcs.app_config import (
     default_summary_template_path,
 )
 from tgcs.cli import app
+from tgcs.layouts import Layout
 
 
 def _isolated(tmp_path):
@@ -71,4 +72,5 @@ def test_generated_config_points_at_the_real_template_path():
     # then
     assert f'summary_template = "{default_summary_template_path()}"' in text
     assert f'# group_folder = "{DEFAULT_GROUP_FOLDER}"' in text
+    assert f'# layout = "{Layout.DAILY}"' in text
     assert "{" not in text, "no unrendered placeholders left"

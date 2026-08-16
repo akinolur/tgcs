@@ -3,6 +3,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tgcs.layouts import Layout
+
 PACKAGE_NAME = "tgcs"
 DEFAULT_GROUP_FOLDER = PACKAGE_NAME
 
@@ -20,6 +22,7 @@ class AppConfig:
     llm_url: str | None = None
     previous_days: int = 0
     summary_template_path: Path | None = None
+    layout: Layout = Layout.DAILY
 
 
 def _xdg_config_dir() -> Path:
@@ -88,6 +91,8 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 
 [settings]
 # previous_days = 5
+# default history layout for chats without their own: "daily" or "single"
+# layout = "{layout}"
 summary_template = "{summary_template}"
 """
 
@@ -98,6 +103,7 @@ def default_config_text() -> str:
         package=PACKAGE_NAME,
         data_dir=_xdg_data_dir(),
         group_folder=DEFAULT_GROUP_FOLDER,
+        layout=str(Layout.DAILY),
         summary_template=default_summary_template_path(),
     )
 
@@ -132,6 +138,8 @@ def load_config(config_path: Path | None = None) -> AppConfig:
 
         settings = raw.get("settings", {})
         kwargs["previous_days"] = int(settings.get("previous_days", 0))
+        if "layout" in settings:
+            kwargs["layout"] = Layout(settings["layout"])
         if "summary_template" in settings:
             kwargs["summary_template_path"] = Path(
                 settings["summary_template"]

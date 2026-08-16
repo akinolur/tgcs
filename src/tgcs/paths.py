@@ -3,14 +3,22 @@ import logging
 import os
 from pathlib import Path
 
+from tgcs.layouts import Layout
+
 logger = logging.getLogger(__name__)
 
 
 class FilePathManager:
-    def __init__(self, base_path: str = "data", prompt_dir: str = "prompts"):
+    def __init__(
+        self,
+        base_path: str = "data",
+        prompt_dir: str = "prompts",
+        default_layout: Layout = Layout.DAILY,
+    ):
         self.base_path = base_path
         os.makedirs(base_path, mode=0o700, exist_ok=True)
         self.prompt_dir = prompt_dir
+        self.default_layout = default_layout
         self.history_folder_name = "history"
         self.threads_folder_name = "threads"
         self.date_history_filename = "history.jsonl"
@@ -83,9 +91,50 @@ class FilePathManager:
             logger.warning(f"Skipping {group_name}: cannot read {metadata_path}: {ex}")
             return None
 
+    def write_metadata(self, group_name: str, metadata: dict) -> None:
+        """Replace metadata atomically, via a tmp sibling.
+
+        An interrupted in-place write would leave the chat unreadable and every
+        command that walks all chats would silently skip it.
+        """
+        metadata_path = self.group_metadata_path(group_name)
+        # the pid keeps two concurrent runs from writing the same tmp file
+        tmp_path = f"{metadata_path}.{os.getpid()}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=4)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, metadata_path)
+
     def _flag(self, metadata: dict, flag_name: str) -> bool:
         # "enabled" is the legacy flag that used to gate both actions
         return metadata.get(flag_name, metadata.get("enabled", True))
+
+    def layout(self, group_name: str) -> Layout:
+        """History layout of one chat, falling back to the configured default."""
+        metadata = self.read_metadata(group_name) or {}
+        raw = metadata.get("layout")
+        if raw is None:
+            return self.default_layout
+        try:
+            return Layout(raw)
+        except ValueError:
+            known = ", ".join(repr(str(item)) for item in Layout)
+            logger.warning(
+                f"{group_name}: unknown layout {raw!r}, using "
+                f"{str(self.default_layout)!r}. Known layouts: {known}."
+            )
+            return self.default_layout
+
+    def set_layout(self, group_name: str, layout: Layout) -> bool:
+        """Write the layout of one chat. False when there is no metadata to update."""
+        metadata = self.read_metadata(group_name)
+        if metadata is None:
+            # nothing safe to rewrite; the warning is already logged
+            return False
+        metadata["layout"] = str(layout)
+        self.write_metadata(group_name, metadata)
+        return True
 
     def is_downloading_enabled(self, group_name: str) -> bool:
         metadata = self.read_metadata(group_name)
@@ -97,7 +146,6 @@ class FilePathManager:
         return self._flag(metadata, "summarization_enabled") if metadata else False
 
     def set_downloading_enabled(self, group_name: str, enabled: bool) -> None:
-        metadata_path = self.group_metadata_path(group_name)
         metadata = self.read_metadata(group_name)
         if metadata is None:
             # nothing safe to rewrite; the warning is already logged
@@ -106,8 +154,7 @@ class FilePathManager:
         if legacy_enabled is not None:
             metadata.setdefault("summarization_enabled", legacy_enabled)
         metadata["downloading_enabled"] = enabled
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, ensure_ascii=False, indent=4)
+        self.write_metadata(group_name, metadata)
 
     def download_groups_list(self) -> list[str]:
         return [name for name, downloading, _ in self.all_groups_list() if downloading]

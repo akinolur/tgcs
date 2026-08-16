@@ -3,6 +3,7 @@ import os
 from typing import TYPE_CHECKING
 
 from tgcs.dates import cutoff
+from tgcs.layouts import Layout
 
 if TYPE_CHECKING:
     from telethon.sync import TelegramClient
@@ -19,6 +20,9 @@ class Notificator:
         self._path_manager = path_manager
 
     def load_unnotified_summaries(self, group_name, last_days=None):
+        if self._path_manager.layout(group_name) is Layout.SINGLE:
+            # leftover date folders from a previous daily layout are not news
+            return []
         history_path = self._path_manager.history_folder_path(group_name)
         all_dates = sorted(
             [
