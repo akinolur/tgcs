@@ -40,6 +40,10 @@ exclude-newer = "5 days"
 name = "pypi"
 url = "https://pypi.org/simple"
 
+[tool.deptry]
+# the project imports itself; `tgcs[summary]` in the dev group is not an external dep
+known_first_party = ["tgcs"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
