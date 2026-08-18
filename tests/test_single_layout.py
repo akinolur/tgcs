@@ -336,3 +336,34 @@ def test_summarization_skips_a_single_layout_chat(tmp_path):
     # then
     assert creator.get_unprocessed_dates("quiet_chat") == []
     assert path_manager.layout("quiet_chat") is Layout.SINGLE
+
+
+def test_count_lines_matches_wc_and_handles_a_torn_tail(tmp_path):
+    # given: a well-formed file, one with no trailing newline, and an empty one
+    from tgcs.commands.chats import _count_lines
+
+    clean = tmp_path / "clean.jsonl"
+    clean.write_bytes(b'{"id":1}\n{"id":2}\n{"id":3}\n')
+    torn = tmp_path / "torn.jsonl"
+    torn.write_bytes(b'{"id":1}\n{"id":2}\n{"id":3')
+    empty = tmp_path / "empty.jsonl"
+    empty.write_bytes(b"")
+
+    # when / then: newline count for complete records, plus the unterminated one
+    assert _count_lines(str(clean)) == 3
+    assert _count_lines(str(torn)) == 3
+    assert _count_lines(str(empty)) == 0
+
+
+def test_count_lines_spans_chunk_boundaries(tmp_path):
+    # given: a file several read-chunks long, so counting cannot rely on one read
+    from tgcs.commands.chats import _COUNT_CHUNK, _count_lines
+
+    record = b'{"id":1,"text":"' + b"x" * 200 + b'"}\n'
+    count = (_COUNT_CHUNK * 3) // len(record)
+    big = tmp_path / "big.jsonl"
+    big.write_bytes(record * count)
+
+    # when / then
+    assert big.stat().st_size > _COUNT_CHUNK * 2
+    assert _count_lines(str(big)) == count

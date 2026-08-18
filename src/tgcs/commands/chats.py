@@ -84,9 +84,20 @@ def _last_dt(history_files: list[str]) -> str:
     return "-"
 
 
+_COUNT_CHUNK = 1 << 20
+
+
 def _count_lines(history_file: str) -> int:
+    """Count records the way `wc -l` does, plus a final unterminated one."""
+    total = 0
+    tail = b""
     with open(history_file, "rb") as f:
-        return sum(1 for line in f if line.strip())
+        while chunk := f.read(_COUNT_CHUNK):
+            total += chunk.count(b"\n")
+            tail = chunk
+    if tail and not tail.endswith(b"\n"):
+        total += 1
+    return total
 
 
 def _msg_count(history_files: list[str]) -> int:
