@@ -46,6 +46,8 @@ tgcs chats update # fetch group metadata (needs telegram.group_folder)
 tgcs chats download GROUP_NAME # download history for one group
 tgcs chats download --all # download all enabled groups
 tgcs chats download --all --days 7 # override settings.previous_days
+tgcs chats layout --chat GROUP_NAME # show current layout (daily/single)
+tgcs chats layout --chat GROUP_NAME single # switch to single-file layout
 ```
 
 ### `tgcs summarize`
@@ -139,11 +141,20 @@ Base: `~/.local/share/tgcs/` — **configurable** via `data_dir` in `~/.config/t
 data_dir = "/path/to/your/data"
 ```
 
+Each chat uses one of two layouts, picked per-chat (`metadata.json`'s
+`layout` key, falling back to `[settings] layout` in config; default
+`daily`). Check or change it with `tgcs chats layout --chat GROUP_NAME`.
+
+### `daily` layout (default)
+
+Splits the history into one folder per date. Use for normal/active groups.
+
 ```
 {group_name}/
-  metadata.json # id, title, username, link_prefix, enabled
+  metadata.json # id, title, username, link_prefix, downloading_enabled, summarization_enabled, layout
   additional_requirements.md # custom prompt injected into LLM
   history/
+    raw_chat_history.jsonl # full raw download, all dates
     {YYYY-MM-DD}/
       history.jsonl # one JSON message per line
       summary.md # final markdown summary
@@ -156,6 +167,26 @@ data_dir = "/path/to/your/data"
 bot.session # Telegram bot session
 user.session / {phone}.session # Telegram user session
 ```
+
+### `single` layout
+
+For low-traffic chats (e.g. private 1-1 dialogs) where per-day folders would
+each hold a message or two. The whole chat stays in one raw file, never
+split by date. Summarization is a `daily`-only feature and skips `single`
+chats outright.
+
+```
+{group_name}/
+  metadata.json
+  history/
+    raw_chat_history.jsonl # entire chat history, never split
+  threads/
+    all-{root_id}.jsonl # exported by threads dump
+```
+
+Switching a chat back to `daily` (`tgcs chats layout --chat NAME daily`)
+rebuilds every date folder from the raw file. Switching `daily` -> `single`
+does not delete existing date folders.
 
 ### Message format (`history.jsonl`)
 
@@ -182,9 +213,13 @@ Date: 2025-07-24
 
 ```json
 {"id": 1358715993, "title": "Group Title", "username": "group_username",
- "link_prefix": "https://t.me/group_username/", "enabled": true,
- "access_hash": 4659813876910449785}
+ "link_prefix": "https://t.me/group_username/", "access_hash": 4659813876910449785,
+ "downloading_enabled": true, "summarization_enabled": true, "layout": "daily"}
 ```
+
+- `downloading_enabled` — managed by `tgcs chats update` from Telegram folder membership
+- `summarization_enabled` — user-owned, never changed by `chats update`
+- `layout` — `daily` or `single`; see "Data Directory Layout" above
 
 ---
 
