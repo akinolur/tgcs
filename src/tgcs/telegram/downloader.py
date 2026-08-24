@@ -278,10 +278,18 @@ class TelegramChatHistoryDownloader:
                     # if all fails, try one last time with get_entity
                     return client.get_entity(id)
 
+    def _display_title(self, entity):
+        title = getattr(entity, "title", None)
+        if title is not None:
+            return title
+        # types.User has no .title
+        return f"{entity.first_name} {entity.last_name or ''}".strip()
+
     def _get_group_name(self, entity):
         group_name = entity.username
         if not group_name:
-            group_name = str(entity.title).lower().strip().replace(" ", "_")
+            title = self._display_title(entity)
+            group_name = str(title).lower().strip().replace(" ", "_")
         return group_name
 
     def download_chat_history(
@@ -405,9 +413,10 @@ class TelegramChatHistoryDownloader:
                 **existing,
                 "id": entity.id,
                 "access_hash": getattr(entity, "access_hash", 0),
-                "title": entity.title,
+                "title": self._display_title(entity),
                 "username": entity.username,
                 "link_prefix": link_prefix,
+                "type": type(entity).__name__,
                 "downloading_enabled": True,
             },
         )

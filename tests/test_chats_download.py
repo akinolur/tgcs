@@ -1,6 +1,8 @@
 import json
 
-from tgcs.commands.chats import _download_all, _download_one
+from telethon.tl.types import InputPeerChannel, InputPeerUser
+
+from tgcs.commands.chats import _chat_peer_from_metadata, _download_all, _download_one
 from tgcs.paths import FilePathManager
 
 
@@ -67,3 +69,25 @@ def test_download_all_with_no_enabled_chats_is_not_a_failure(tmp_path):
 
     # then
     assert failed == 0
+
+
+def test_chat_peer_from_metadata_builds_input_peer_user_for_a_private_dialog():
+    # given
+    metadata = {"id": 1, "access_hash": 42, "type": "User"}
+
+    # when
+    peer = _chat_peer_from_metadata(metadata)
+
+    # then
+    assert peer == InputPeerUser(1, 42)
+
+
+def test_chat_peer_from_metadata_without_type_still_builds_channel_peer():
+    # given
+    metadata = {"id": 1, "access_hash": 42}
+
+    # when
+    peer = _chat_peer_from_metadata(metadata)
+
+    # then
+    assert peer == InputPeerChannel(1, 42)

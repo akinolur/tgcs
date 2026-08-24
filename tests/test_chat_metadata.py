@@ -64,3 +64,45 @@ def test_empty_folder_does_not_disable_known_chats(tmp_path):
     # then
     assert result == {}
     assert path_manager.is_downloading_enabled("group")
+
+
+def test_group_name_for_user_with_username(tmp_path):
+    # given
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    downloader = TelegramChatHistoryDownloader(FakeClient([]), path_manager)
+    user = types.User(id=1, username="alice", first_name="Alice")
+
+    # when
+    group_name = downloader._get_group_name(user)
+
+    # then
+    assert group_name == "alice"
+
+
+def test_group_name_for_user_without_username_falls_back_to_full_name(tmp_path):
+    # given
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    downloader = TelegramChatHistoryDownloader(FakeClient([]), path_manager)
+    user = types.User(id=1, first_name="Alice", last_name="Bobrova")
+
+    # when
+    group_name = downloader._get_group_name(user)
+
+    # then
+    assert group_name == "alice_bobrova"
+
+
+def test_save_chat_metadata_for_user_records_type_and_title(tmp_path):
+    # given
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    downloader = TelegramChatHistoryDownloader(FakeClient([]), path_manager)
+    user = types.User(id=1, access_hash=42, first_name="Alice", last_name="Bobrova")
+
+    # when
+    downloader._save_chat_metadata("alice_bobrova", user)
+
+    # then
+    with open(path_manager.group_metadata_path("alice_bobrova")) as f:
+        metadata = json.load(f)
+    assert metadata["type"] == "User"
+    assert metadata["title"] == "Alice Bobrova"

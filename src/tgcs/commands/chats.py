@@ -260,10 +260,12 @@ def download(
 
 
 def _chat_peer_from_metadata(metadata: dict):
-    from telethon.tl.types import InputPeerChannel
+    from telethon.tl.types import InputPeerChannel, InputPeerUser
 
     chat_id = metadata["id"]
     access_hash = metadata.get("access_hash", 0)
+    if metadata.get("type") == "User":
+        return InputPeerUser(chat_id, access_hash)
     return InputPeerChannel(chat_id, access_hash) if access_hash else chat_id
 
 
