@@ -66,6 +66,28 @@ def test_empty_folder_does_not_disable_known_chats(tmp_path):
     assert path_manager.is_downloading_enabled("group")
 
 
+def test_group_name_for_basic_chat_without_username_attribute(tmp_path):
+    # basic (non-super) groups are types.Chat, which has no `username`
+    # attribute at all - not even None - so it must not be accessed directly
+    # given
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    downloader = TelegramChatHistoryDownloader(FakeClient([]), path_manager)
+    chat = types.Chat(
+        id=1,
+        title="Our Group",
+        photo=None,
+        participants_count=2,
+        date=None,
+        version=1,
+    )
+
+    # when
+    group_name = downloader._get_group_name(chat)
+
+    # then
+    assert group_name == "our_group"
+
+
 def test_group_name_for_user_with_username(tmp_path):
     # given
     path_manager = FilePathManager(base_path=str(tmp_path / "data"))

@@ -286,7 +286,7 @@ class TelegramChatHistoryDownloader:
         return f"{entity.first_name} {entity.last_name or ''}".strip()
 
     def _get_group_name(self, entity):
-        group_name = entity.username
+        group_name = getattr(entity, "username", None)
         if not group_name:
             title = self._display_title(entity)
             group_name = str(title).lower().strip().replace(" ", "_")
@@ -414,7 +414,7 @@ class TelegramChatHistoryDownloader:
                 "id": entity.id,
                 "access_hash": getattr(entity, "access_hash", 0),
                 "title": self._display_title(entity),
-                "username": entity.username,
+                "username": getattr(entity, "username", None),
                 "link_prefix": link_prefix,
                 "type": type(entity).__name__,
                 "downloading_enabled": True,
