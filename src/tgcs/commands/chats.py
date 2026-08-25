@@ -79,20 +79,28 @@ def _last_dt(history_files: list[str]) -> Optional[str]:
         size = f.tell()
         if size == 0:
             return None
-        f.seek(-min(4096, size), 2)
-        chunk = f.read()
-    for line in reversed(chunk.split(b"\n")):
-        line = line.strip()
-        if line:
-            try:
-                raw = json.loads(line).get("date")
-                if not raw:
-                    continue
-                dt = datetime.fromisoformat(raw).astimezone(timezone.utc)
-                return dt.strftime("%Y-%m-%d %H:%M")
-            except Exception:
-                continue
-    return None
+        read_size = 4096
+        while True:
+            at_start = read_size >= size
+            f.seek(-min(read_size, size), 2)
+            chunk = f.read()
+            # the first split piece may be a line truncated by the seek, so
+            # drop it unless the read already reached the start of the file
+            lines = chunk.split(b"\n") if at_start else chunk.split(b"\n")[1:]
+            for line in reversed(lines):
+                line = line.strip()
+                if line:
+                    try:
+                        raw = json.loads(line).get("date")
+                        if not raw:
+                            continue
+                        dt = datetime.fromisoformat(raw).astimezone(timezone.utc)
+                        return dt.strftime("%Y-%m-%d %H:%M")
+                    except Exception:
+                        continue
+            if at_start:
+                return None
+            read_size *= 2
 
 
 _COUNT_CHUNK = 1 << 20
