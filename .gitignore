@@ -1,3 +1,4 @@
+.revmux
 local/
 .mcp.json
 *.session*
