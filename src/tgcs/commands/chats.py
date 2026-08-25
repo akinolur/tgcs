@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import TYPE_CHECKING, Optional, assert_never
 
 import typer
@@ -19,11 +20,21 @@ logger = logging.getLogger(__name__)
 app = typer.Typer(no_args_is_help=True)
 
 
+class OutputFormat(StrEnum):
+    TABLE = "table"
+    JSON = "json"
+
+
 @app.command(name="ls")
-def get_chats(ctx: typer.Context):
+def get_chats(
+    ctx: typer.Context,
+    output_format: OutputFormat = typer.Option(
+        OutputFormat.TABLE, "--format", help="output format"
+    ),
+):
     """List known chats with status and message counts."""
     container: "Container" = ctx.obj
-    _get_chats(container.path_manager)
+    _get_chats(container.path_manager, output_format)
 
 
 def _dates(path_manager: "FilePathManager", group_name: str) -> list[str]:
@@ -57,17 +68,17 @@ def _history_files(
         assert_never(layout)
 
 
-def _last_dt(history_files: list[str]) -> str:
+def _last_dt(history_files: list[str]) -> Optional[str]:
     if not history_files:
-        return "-"
+        return None
     history_file = history_files[-1]
     if not os.path.exists(history_file):
-        return "-"
+        return None
     with open(history_file, "rb") as f:
         f.seek(0, 2)
         size = f.tell()
         if size == 0:
-            return "-"
+            return None
         f.seek(-min(4096, size), 2)
         chunk = f.read()
     for line in reversed(chunk.split(b"\n")):
@@ -81,7 +92,7 @@ def _last_dt(history_files: list[str]) -> str:
                 return dt.strftime("%Y-%m-%d %H:%M")
             except Exception:
                 continue
-    return "-"
+    return None
 
 
 _COUNT_CHUNK = 1 << 20
@@ -109,7 +120,10 @@ def _msg_count(history_files: list[str]) -> int:
     return total
 
 
-def _get_chats(path_manager: "FilePathManager") -> None:
+def _get_chats(
+    path_manager: "FilePathManager",
+    output_format: OutputFormat = OutputFormat.TABLE,
+) -> None:
     all_groups = sorted(path_manager.all_groups_list())
 
     rows = []
@@ -117,28 +131,44 @@ def _get_chats(path_manager: "FilePathManager") -> None:
         layout = path_manager.layout(name)
         history_files = _history_files(path_manager, name, layout)
         rows.append(
-            (
-                name,
-                str(layout),
-                "on" if downloading_enabled else "off",
-                "on" if summarization_enabled else "off",
-                _last_dt(history_files),
-                _msg_count(history_files),
-            )
+            {
+                "name": name,
+                "layout": str(layout),
+                "download": bool(downloading_enabled),
+                "summary": bool(summarization_enabled),
+                "last_message": _last_dt(history_files),
+                "messages": _msg_count(history_files),
+            }
         )
-    col1 = max(len("NAME"), *(len(r[0]) for r in rows)) if rows else len("NAME")
+    if output_format is OutputFormat.JSON:
+        _print_json(rows)
+    elif output_format is OutputFormat.TABLE:
+        _print_table(rows)
+    else:
+        assert_never(output_format)
+
+
+def _print_table(rows: list[dict]) -> None:
+    col1 = max(len("NAME"), *(len(r["name"]) for r in rows)) if rows else len("NAME")
     col6 = (
-        max(len("MESSAGES"), *(len(str(r[5])) for r in rows))
+        max(len("MESSAGES"), *(len(str(r["messages"])) for r in rows))
         if rows
         else len("MESSAGES")
     )
     print(
         f"{'NAME':<{col1}}  {'LAYOUT':<6}  {'DOWNLOAD':<8}  {'SUMMARY':<7}  {'LAST MESSAGE':<16}  {'MESSAGES':>{col6}}"  # noqa: E501
     )
-    for name, layout, download, summary, last_dt, msg_count in rows:
+    for r in rows:
+        download = "true" if r["download"] else "false"
+        summary = "true" if r["summary"] else "false"
+        last_message = r["last_message"] or "-"
         print(
-            f"{name:<{col1}}  {layout:<6}  {download:<8}  {summary:<7}  {last_dt:<16}  {msg_count:>{col6}}"  # noqa: E501
+            f"{r['name']:<{col1}}  {r['layout']:<6}  {download:<8}  {summary:<7}  {last_message:<16}  {r['messages']:>{col6}}"  # noqa: E501
         )
+
+
+def _print_json(rows: list[dict]) -> None:
+    print(json.dumps(rows, indent=2, ensure_ascii=False))
 
 
 @app.command(name="layout")

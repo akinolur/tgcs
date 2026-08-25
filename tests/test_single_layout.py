@@ -7,7 +7,7 @@ import pytest
 import typer
 from telethon.tl import types
 
-from tgcs.commands.chats import _get_chats
+from tgcs.commands.chats import OutputFormat, _get_chats
 from tgcs.commands.threads import SortBy, _dump_threads, _list_threads
 from tgcs.dates import today
 from tgcs.layouts import Layout
@@ -221,6 +221,34 @@ def test_chats_ls_counts_messages_from_the_raw_file(tmp_path, capsys):
     assert "single" in out
     assert "2025-03-04 09:30" in out
     assert out.strip().splitlines()[-1].split()[-1] == "2"
+
+
+def test_chats_ls_json_reports_typed_fields(tmp_path, capsys):
+    # given
+    at = datetime(2025, 3, 4, 9, 30, tzinfo=timezone.utc)
+    downloader = _downloader(
+        tmp_path, [FakeMessage(1, "hi", at=at), FakeMessage(2, "there", at=at)]
+    )
+    path_manager = downloader.path_manager
+    _make_single_layout(path_manager)
+    downloader.download_chat_history("quiet_chat")
+
+    # when
+    _get_chats(path_manager, OutputFormat.JSON)
+
+    # then
+    out = capsys.readouterr().out
+    rows = json.loads(out)
+    assert rows == [
+        {
+            "name": "quiet_chat",
+            "layout": "single",
+            "download": True,
+            "summary": True,
+            "last_message": "2025-03-04 09:30",
+            "messages": 2,
+        }
+    ]
 
 
 def test_threads_ls_builds_threads_from_the_whole_file(tmp_path, capsys):
