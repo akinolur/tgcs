@@ -60,3 +60,41 @@ packages = ["src/tgcs"]
 
 [project.scripts]
 tgcs = "tgcs.cli:app"
+
+[tool.tach]
+exclude = [
+    "**/__pycache__",
+    "**/*egg-info",
+    "**/docs",
+    "**/tests",
+    "**/venv",
+]
+source_roots = ["src"]
+forbid_circular_dependencies = true
+
+# Layers, top to bottom. A layer may import only layers below it:
+# - app may import summarization and core
+# - summarization may import core
+# - core may NOT import summarization or app
+# Modules have no depends_on: the layers are the only rule.
+# Do not run `tach sync`: it adds self-referencing depends_on to the
+# multi-path summarization module, which fails the circular check.
+layers = ["app", "summarization", "core"]
+
+[[tool.tach.modules]]
+path = "tgcs.cli"
+layer = "app"
+
+[[tool.tach.modules]]
+paths = [
+    "tgcs.commands.summarize",
+    "tgcs.summary_creator",
+    "tgcs.prompt_loader",
+    "tgcs.workflows",
+]
+layer = "summarization"
+
+# everything else under tgcs/
+[[tool.tach.modules]]
+path = "tgcs"
+layer = "core"
