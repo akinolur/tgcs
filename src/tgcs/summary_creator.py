@@ -105,13 +105,14 @@ class SummaryCreator:
             unprocessed_dates = unprocessed_dates[:n]
         for date in unprocessed_dates:
             if self._acquire_lock(group_name, date):
-                # print(f"Acquire lock {date}")
                 try:
+                    # the list was built before the lock: another run may be done
+                    if self._is_date_processed(group_name, date):
+                        continue
                     logger.info(f"[{date}] {group_name}")
                     self._process_date(group_name, date)
                 finally:
                     self._release_lock(group_name, date)
-                    # print(f"Release lock {date}\n")
 
     def _process_date(self, group_name, date):
         """

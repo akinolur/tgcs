@@ -92,3 +92,36 @@ def test_releasing_a_lock_that_was_never_taken_is_a_noop(tmp_path):
     # when / then
     creator._release_lock("group", DATE)
     assert not os.path.exists(creator.path_manager.lock_path("group", DATE))
+
+
+class _RecordingWorkflow:
+    def __init__(self):
+        self.context = None
+        self.runs = 0
+
+    def run(self, data):
+        self.runs += 1
+        return "summary"
+
+
+class _StaleListCreator(SummaryCreator):
+    """Returns a work list computed before another run finished the date."""
+
+    def get_unprocessed_dates(self, group_name, last_days=None):
+        return [DATE]
+
+
+def test_a_date_finished_by_another_run_is_not_processed_again(tmp_path):
+    # given
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    path_manager.create_folders_if_not_exists("group", DATE)
+    with open(path_manager.summary_path("group", DATE), "w") as f:
+        f.write("done by another run")
+    workflow = _RecordingWorkflow()
+    creator = _StaleListCreator(path_manager, workflow=workflow)
+
+    # when
+    creator.process_unprocessed_dates("group")
+
+    # then
+    assert workflow.runs == 0
