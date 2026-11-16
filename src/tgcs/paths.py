@@ -8,6 +8,23 @@ from tgcs.layouts import Layout
 logger = logging.getLogger(__name__)
 
 
+def write_text_atomic(path: str, text: str) -> None:
+    """Replace the file atomically via a tmp sibling, so a crash cannot leave
+    it partial. The fsyncs make the content and the rename survive a power loss.
+    """
+    tmp_path = f"{path}.{os.getpid()}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
+    fd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 class FilePathManager:
     def __init__(
         self,
@@ -97,14 +114,10 @@ class FilePathManager:
         An interrupted in-place write would leave the chat unreadable and every
         command that walks all chats would silently skip it.
         """
-        metadata_path = self.group_metadata_path(group_name)
-        # the pid keeps two concurrent runs from writing the same tmp file
-        tmp_path = f"{metadata_path}.{os.getpid()}.tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, ensure_ascii=False, indent=4)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, metadata_path)
+        write_text_atomic(
+            self.group_metadata_path(group_name),
+            json.dumps(metadata, ensure_ascii=False, indent=4),
+        )
 
     def _flag(self, metadata: dict, flag_name: str) -> bool:
         # "enabled" is the legacy flag that used to gate both actions

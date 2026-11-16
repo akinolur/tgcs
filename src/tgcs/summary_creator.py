@@ -5,7 +5,7 @@ import os
 
 from tgcs.dates import cutoff
 from tgcs.layouts import Layout
-from tgcs.paths import FilePathManager
+from tgcs.paths import FilePathManager, write_text_atomic
 from tgcs.workflows.base import WorkflowExecutor
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,5 @@ class SummaryCreator:
         """
         Save the summary
         """
-        summary_path = self.path_manager.summary_path(group_name, date)
-        with open(summary_path, "w") as f:
-            f.write(summary)
+        # atomic: summary.md marks the date as done, so it must never be partial
+        write_text_atomic(self.path_manager.summary_path(group_name, date), summary)

@@ -10,6 +10,7 @@ from telethon.tl import types
 
 from tgcs.dates import today
 from tgcs.layouts import Layout
+from tgcs.paths import write_text_atomic
 
 # from telethon.errors import ChatsIdInvalidError
 
@@ -123,15 +124,6 @@ def _dump_jsonl(messages) -> str:
     return "".join(json.dumps(msg, ensure_ascii=False) + "\n" for msg in messages)
 
 
-def _fsync_dir(path: str) -> None:
-    """Persist a directory entry, so a rename survives a power loss."""
-    fd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-
-
 def _append_jsonl(path: str, messages) -> None:
     """Append records in one write, then fsync so they are actually on disk."""
     with open(path, "a", encoding="utf-8") as f:
@@ -141,15 +133,7 @@ def _append_jsonl(path: str, messages) -> None:
 
 
 def _rewrite_jsonl(path: str, messages) -> None:
-    """Replace the file atomically via a tmp sibling, so a crash cannot destroy it."""
-    # the pid keeps two concurrent runs from writing the same tmp file
-    tmp_path = f"{path}.{os.getpid()}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        f.write(_dump_jsonl(messages))
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp_path, path)
-    _fsync_dir(path)
+    write_text_atomic(path, _dump_jsonl(messages))
 
 
 class TelegramChatHistoryDownloader:
