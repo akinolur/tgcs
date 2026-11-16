@@ -290,6 +290,10 @@ class TelegramChatHistoryDownloader:
         if not group_name:
             title = self._display_title(entity)
             group_name = str(title).lower().strip().replace(" ", "_")
+            # titles are free text: keep the name a single path segment
+            group_name = group_name.replace("/", "_").replace("\\", "_")
+            if group_name.strip(".") == "":
+                group_name = f"chat_{entity.id}"
         return group_name
 
     def download_chat_history(

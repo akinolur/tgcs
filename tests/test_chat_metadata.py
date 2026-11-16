@@ -128,3 +128,20 @@ def test_save_chat_metadata_for_user_records_type_and_title(tmp_path):
         metadata = json.load(f)
     assert metadata["type"] == "User"
     assert metadata["title"] == "Alice Bobrova"
+
+
+@pytest.mark.parametrize("title", ["../../etc", "a/../../b", ".."])
+def test_group_name_from_title_stays_inside_the_data_dir(tmp_path, title):
+    # given
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    downloader = TelegramChatHistoryDownloader(FakeClient([]), path_manager)
+    chat = types.Chat(
+        id=7, title=title, photo=None, participants_count=2, date=None, version=1
+    )
+
+    # when
+    group_name = downloader._get_group_name(chat)
+
+    # then
+    assert "/" not in group_name
+    assert group_name not in ("", ".", "..")
