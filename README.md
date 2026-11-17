@@ -56,7 +56,7 @@ Data and telegram session files live in `~/.local/share/tgcs`.
 
 ## Install skill
 
-The repo ships an agent skill (`.claude/skills/tgcs-guide`) that teaches coding agents
+The repo ships an agent skill (`skills/tgcs-guide`) that teaches coding agents
 how to configure, use tgcs and read its data.
 
 Install with [skills CLI](https://github.com/vercel-labs/skills), which knows most agents
@@ -67,6 +67,13 @@ npx skills add akinolur/tgcs -s tgcs-guide -a claude -y # a specific agent, proj
 ```
 
 Refresh later with `npx skills update`.
+
+### Hermes
+
+```bash
+hermes skills install akinolur/tgcs/skills/tgcs-guide # one skill
+hermes skills tap add akinolur/tgcs # or subscribe to the repo
+```
 
 ### Any other location
 
