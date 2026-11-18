@@ -30,10 +30,21 @@ def new_telegram_client(session_path: str, api_id: int, api_hash: str) -> Any:
         os.umask(old_umask)  # restore original mask (typically 0o022 → 644)
 
 
-def new_llm_client(api_key: str, base_url: str | None) -> Any:
-    from openai import OpenAI  # lazy: openai adds ~450ms to startup
+# SDK is the only retry layer; it honors retry-after up to 120 s
+LLM_MAX_RETRIES = 5
+LLM_TIMEOUT = 120.0
+LLM_CONNECT_TIMEOUT = 10.0
 
-    return OpenAI(api_key=api_key, base_url=base_url)
+
+def new_llm_client(api_key: str, base_url: str | None) -> Any:
+    from openai import OpenAI, Timeout  # lazy: openai adds ~450ms to startup
+
+    return OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        max_retries=LLM_MAX_RETRIES,
+        timeout=Timeout(LLM_TIMEOUT, connect=LLM_CONNECT_TIMEOUT),
+    )
 
 
 @contextmanager

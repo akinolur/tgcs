@@ -3,19 +3,18 @@ import os
 from typing import Any
 
 from openai import OpenAI, RateLimitError
-from tenacity import (
-    before_sleep_log,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_random_exponential,
-)
 
 from tgcs.paths import FilePathManager
 from tgcs.prompt_loader import PromptLoader
 from tgcs.workflows.base import ResumableStep
 
 logger = logging.getLogger(__name__)
+
+
+def _rate_limit_message(error: RateLimitError) -> str:
+    retry_after = error.response.headers.get("retry-after")
+    hint = f" (retry-after={retry_after}s)" if retry_after else ""
+    return f"LLM rate limit, giving up{hint}: {error}"
 
 
 class GenerateThreadsNameStep(ResumableStep):
@@ -33,12 +32,6 @@ class GenerateThreadsNameStep(ResumableStep):
         with open(additional_requirements_path, "r") as f:
             return f.read()
 
-    @retry(
-        retry=retry_if_exception_type(RateLimitError),
-        stop=stop_after_attempt(5),
-        wait=wait_random_exponential(multiplier=1, min=10, max=180),
-        before_sleep=before_sleep_log(logger, logging.INFO),
-    )
     def _call_llm(self, system_prompt, user_prompt, schema):
         """Make LLM API call with retry logic for rate limits"""
         logger.info("Calling LLM API...")
@@ -75,7 +68,7 @@ class GenerateThreadsNameStep(ResumableStep):
             result = response.choices[0].message.content
             logger.debug(result)
         except RateLimitError as e:
-            logger.error(f"Failed after multiple retries due to rate limits: {e}")
+            logger.error(_rate_limit_message(e))
             result = ""
         except Exception as e:
             logger.error(f"Error during LLM call: {e}")
