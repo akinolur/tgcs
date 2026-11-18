@@ -155,8 +155,7 @@ class TelegramChatHistoryDownloader:
             _rewrite_jsonl(filename, messages)
             return len(messages)
 
-        if _truncate_partial_tail(filename):
-            logger.warning(f"{group_name}: dropped a partial record from {filename}")
+        self._repair_raw_history_tail(group_name)
         last_line = _read_last_line(filename)
         if not last_line.strip():
             # empty, or emptied by the repair above
@@ -213,12 +212,20 @@ class TelegramChatHistoryDownloader:
             # mid-write would leave a truncated day forever
             _rewrite_jsonl(filename, day_messages)
 
+    def _repair_raw_history_tail(self, group_name) -> None:
+        filename = self.path_manager.raw_history_path(group_name)
+        if os.path.exists(filename) and _truncate_partial_tail(filename):
+            logger.warning(f"{group_name}: dropped a partial record from {filename}")
+
     def _get_info_about_chat_history(self, group_name):
         filename = self.path_manager.raw_history_path(group_name)
         if not os.path.exists(filename):
             return None, None, None, None
         with open(filename, "rb") as f:
-            first = json.loads(f.readline())
+            first_line = f.readline()
+        if not first_line.strip():
+            return None, None, None, None
+        first = json.loads(first_line)
         last = json.loads(_read_last_line(filename))
         return (
             first["id"],
@@ -297,6 +304,7 @@ class TelegramChatHistoryDownloader:
         offset_date = today() - timedelta(days=previous_days)
         if start_from_yesterday:
             offset_date = offset_date - timedelta(days=1)
+        self._repair_raw_history_tail(group_name)
         _, first_message_date, last_message_id, _ = self._get_info_about_chat_history(
             group_name
         )
