@@ -9,7 +9,6 @@ keywords = ["telegram", "chat", "history", "summarization", "llm"]
 dependencies = [
   "telethon",
   "typer",
-  "tenacity",
   "qrcode",
 ]
 

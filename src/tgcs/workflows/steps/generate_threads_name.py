@@ -3,13 +3,6 @@ import os
 from typing import Any
 
 from openai import OpenAI, RateLimitError
-from tenacity import (
-    before_sleep_log,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_random_exponential,
-)
 
 from tgcs.paths import FilePathManager
 from tgcs.prompt_loader import PromptLoader
@@ -33,12 +26,6 @@ class GenerateThreadsNameStep(ResumableStep):
         with open(additional_requirements_path, "r") as f:
             return f.read()
 
-    @retry(
-        retry=retry_if_exception_type(RateLimitError),
-        stop=stop_after_attempt(5),
-        wait=wait_random_exponential(multiplier=1, min=10, max=180),
-        before_sleep=before_sleep_log(logger, logging.INFO),
-    )
     def _call_llm(self, system_prompt, user_prompt, schema):
         """Make LLM API call with retry logic for rate limits"""
         logger.info("Calling LLM API...")
