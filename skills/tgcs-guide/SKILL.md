@@ -71,9 +71,6 @@ tgcs threads ls --chat GROUP_NAME --days N
 tgcs threads ls --chat GROUP_NAME --days 3 --min-msgs 10 # filter (default: 4)
 tgcs threads ls --chat GROUP_NAME --sort count # sort by msg count
 
-# Group can be specified by number (from chats ls)
-tgcs threads ls --chat 1
-
 # Show all messages in a thread (spans date boundaries)
 tgcs threads show --chat GROUP_NAME ROOT_ID
 

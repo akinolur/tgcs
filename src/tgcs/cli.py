@@ -10,6 +10,7 @@ from tgcs.app_config import (
     write_default_config,
 )
 from tgcs.commands import auth, chats, summarize, threads
+from tgcs.commands._common import require_known_chat
 from tgcs.container import Container
 from tgcs.logging_setup import setup_logging
 
@@ -29,15 +30,10 @@ def _get_groups(container: Container):
     return container.path_manager.summarize_groups_list()
 
 
-def _get_group_name_by_number(container: Container, number: int):
-    group_names = _get_groups(container)
-    return group_names[number - 1]
-
-
 @root.command()
 def notification(
     ctx: typer.Context,
-    name: str = typer.Option(None, "--chat", "-g", help="name or number of chat"),
+    name: str = typer.Option(None, "--chat", "-g", help="chat name"),
     all: bool = typer.Option(False, "--all", "-a", help="Notify for all groups."),
     days: int | None = typer.Option(
         None,
@@ -55,14 +51,14 @@ def notification(
     if not all and not name:
         typer.echo("You must specify either --chat or --all.")
         raise typer.Exit(code=1)
+    if name:
+        require_known_chat(container.path_manager, name)
     if not container.cfg.tg_users:
         typer.echo(f"telegram_bot.tg_users is not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
 
     if all:
         group_names = _get_groups(container)
-    elif name.isnumeric():
-        group_names = [_get_group_name_by_number(container, int(name))]
     else:
         group_names = [name]
 
