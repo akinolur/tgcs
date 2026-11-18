@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -36,16 +37,32 @@ def _invoke(container, args):
 
 
 @pytest.mark.parametrize("command", ["summarize", "notification"])
-def test_unknown_chat_exits_with_an_error(tmp_path, command):
+@pytest.mark.parametrize("name", ["missing", "1", ".."])
+def test_unknown_chat_exits_with_an_error(tmp_path, command, name):
     # given
     container = _container(tmp_path, chats=["alpha"])
 
     # when
-    result = _invoke(container, [command, "--chat", "missing"])
+    result = _invoke(container, [command, "--chat", name])
 
     # then
     assert result.exit_code == 1
-    assert "missing: unknown chat" in result.output
+    assert f"{name}: unknown chat" in result.output
+
+
+@pytest.mark.parametrize("command", ["summarize", "notification"])
+def test_a_path_to_another_data_dir_is_not_a_chat(tmp_path, command):
+    # given
+    other = _container(tmp_path / "other", chats=["alpha"])
+    other_chat = os.path.dirname(other.path_manager.group_metadata_path("alpha"))
+    container = _container(tmp_path, chats=["beta"])
+
+    # when
+    result = _invoke(container, [command, "--chat", os.path.abspath(other_chat)])
+
+    # then
+    assert result.exit_code == 1
+    assert "unknown chat" in result.output
 
 
 def test_summarize_treats_a_numeric_chat_name_as_a_name(tmp_path, monkeypatch):
