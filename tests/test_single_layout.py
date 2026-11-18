@@ -10,6 +10,7 @@ from telethon.tl import types
 from tgcs.commands.chats import OutputFormat, _get_chats
 from tgcs.commands.threads import SortBy, _dump_threads, _list_threads
 from tgcs.dates import today
+from tgcs.history_files import update_raw_history
 from tgcs.layouts import Layout
 from tgcs.paths import FilePathManager
 from tgcs.telegram.downloader import TelegramChatHistoryDownloader
@@ -126,13 +127,15 @@ def test_overlapping_batch_merges_without_duplicates_or_leftovers(tmp_path):
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
     raw_path = path_manager.raw_history_path("quiet_chat")
-    downloader._update_raw_chat_history(
+    update_raw_history(
+        path_manager,
         [downloader._prepare_message(FakeMessage(i, f"m{i}")) for i in (1, 2, 3)],
         "quiet_chat",
     )
 
     # when: ids 2 and 3 come back alongside a new id 4
-    added = downloader._update_raw_chat_history(
+    added = update_raw_history(
+        path_manager,
         [downloader._prepare_message(FakeMessage(i, f"m{i}")) for i in (2, 3, 4)],
         "quiet_chat",
     )
@@ -149,7 +152,8 @@ def test_partial_last_record_is_repaired_instead_of_blocking_downloads(tmp_path)
     downloader = _downloader(tmp_path, [])
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader._update_raw_chat_history(
+    update_raw_history(
+        path_manager,
         [downloader._prepare_message(FakeMessage(i, f"m{i}")) for i in (1, 2)],
         "quiet_chat",
     )
@@ -158,8 +162,8 @@ def test_partial_last_record_is_repaired_instead_of_blocking_downloads(tmp_path)
         f.write('{"id":3,"te')
 
     # when: without the repair this would raise JSONDecodeError forever
-    added = downloader._update_raw_chat_history(
-        [downloader._prepare_message(FakeMessage(3, "m3"))], "quiet_chat"
+    added = update_raw_history(
+        path_manager, [downloader._prepare_message(FakeMessage(3, "m3"))], "quiet_chat"
     )
 
     # then
@@ -177,8 +181,8 @@ def test_a_wholly_partial_raw_file_is_repaired(tmp_path):
         f.write('{"id":1,"te')
 
     # when
-    added = downloader._update_raw_chat_history(
-        [downloader._prepare_message(FakeMessage(1, "m1"))], "quiet_chat"
+    added = update_raw_history(
+        path_manager, [downloader._prepare_message(FakeMessage(1, "m1"))], "quiet_chat"
     )
 
     # then
