@@ -204,15 +204,9 @@ def chat_layout(
         typer.echo(
             f"Rebuilding date folders from {path_manager.raw_history_path(name)}"
         )
-        _split_raw_history(path_manager, name)
+        from tgcs.history_files import split_raw_history
 
-
-def _split_raw_history(path_manager: "FilePathManager", group_name: str) -> None:
-    # imported lazily: splitting is pure file work, but the module pulls in telethon
-    from tgcs.telegram.downloader import TelegramChatHistoryDownloader
-
-    downloader = TelegramChatHistoryDownloader(client=None, path_manager=path_manager)
-    downloader._create_daily_chat_history_from_raw_history(group_name)
+        split_raw_history(path_manager, name)
 
 
 @app.command(name="update")
