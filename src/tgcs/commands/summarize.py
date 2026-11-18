@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING
 
 import typer
 
+from tgcs.commands._common import require_known_chat
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -20,7 +22,7 @@ app = typer.Typer(no_args_is_help=True)
 @app.callback(invoke_without_command=True)
 def summarize(
     ctx: typer.Context,
-    name: str = typer.Option(None, "--chat", "-g", help="name or number of chat"),
+    name: str = typer.Option(None, "--chat", "-g", help="chat name"),
     all: bool = typer.Option(False, "--all", "-a", help="Summarize all groups."),
     tg_notification: bool = typer.Option(False, "--tg"),
     limit: int | None = None,
@@ -66,10 +68,7 @@ def summarize(
             days=days,
         )
     elif name:
-        if name.isnumeric():
-            name = _get_group_name_by_number(  # noqa: PLW2901
-                container.path_manager, int(name)
-            )
+        require_known_chat(container.path_manager, name)
         logger.info(f"Summarizing group: {name}")
         llm_client = container.llm_client
         notificator = None
@@ -179,10 +178,6 @@ def _summarize_group(
     SummaryCreator(path_manager, workflow).process_unprocessed_dates(
         group_name, limit, last_days=days
     )
-
-
-def _get_group_name_by_number(path_manager: "FilePathManager", number: int) -> str:
-    return path_manager.summarize_groups_list()[number - 1]
 
 
 def _summarize_all(

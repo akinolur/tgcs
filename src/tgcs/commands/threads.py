@@ -53,10 +53,6 @@ def _history_slices(
         assert_never(layout)
 
 
-def _resolve_group_name(name: str) -> str:
-    return name
-
-
 def _load_link_prefix(path_manager: "FilePathManager", group_name: str) -> str:
     metadata_path = path_manager.group_metadata_path(group_name)
     with open(metadata_path, encoding="utf-8") as f:
@@ -83,7 +79,7 @@ def _build_threads(history_raw: str, link_prefix: str, min_msgs: int):
 @app.command(name="ls")
 def list_threads(
     ctx: typer.Context,
-    name: str = typer.Option(..., "--chat", "-g", help="group name or number"),
+    name: str = typer.Option(..., "--chat", "-g", help="chat name"),
     date_str: Optional[str] = typer.Option(
         None, "--date", help="single date YYYY-MM-DD"
     ),
@@ -137,7 +133,7 @@ def _list_threads(
         typer.echo("Error: --from and --to must be used together.")
         raise typer.Exit(code=1)
 
-    group_name = _resolve_group_name(name)
+    group_name = name
     single_layout = path_manager.layout(group_name) is Layout.SINGLE
     if single_layout and selectors_used:
         typer.echo(
@@ -215,7 +211,7 @@ def dump_threads(
 def _dump_threads(
     path_manager: "FilePathManager", name: str, min_msgs: int, force: bool
 ) -> None:
-    group_name = _resolve_group_name(name)
+    group_name = name
     slices = _history_slices(path_manager, group_name)
     if not slices:
         typer.echo("No history found.")
@@ -247,7 +243,7 @@ def _dump_threads(
 @app.command(name="show")
 def show_thread(
     ctx: typer.Context,
-    name: str = typer.Option(..., "--chat", "-g", help="group name or number"),
+    name: str = typer.Option(..., "--chat", "-g", help="chat name"),
     root_id: int = typer.Argument(..., help="root/starter message ID"),
 ):
     """Print all messages in a thread across dates."""
@@ -260,7 +256,7 @@ def show_thread(
 
 
 def _show_thread(path_manager: "FilePathManager", name: str, root_id: int) -> None:
-    group_name = _resolve_group_name(name)
+    group_name = name
     slices = _history_slices(path_manager, group_name)
     if not slices:
         typer.echo("No history found.")

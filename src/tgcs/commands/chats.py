@@ -244,15 +244,7 @@ def _get_chats_metadata(
     group_names_dict: dict[str, bool] = tg_downloader.download_chat_metadata(
         group_folder
     )
-    rows = _response_rows(list(group_names_dict.keys()))
-    logger.info("Metadata downloaded:\n" + "\n".join(rows))
-
-
-def _response_rows(group_names: list[str]):
-    rows = []
-    for i, group_name in enumerate(group_names, start=1):
-        rows.append(f"[{i}] {group_name}")
-    return rows
+    logger.info("Metadata downloaded:\n" + "\n".join(group_names_dict))
 
 
 @app.command(name="download")
