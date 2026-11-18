@@ -11,6 +11,12 @@ from tgcs.workflows.base import ResumableStep
 logger = logging.getLogger(__name__)
 
 
+def _rate_limit_message(error: RateLimitError) -> str:
+    retry_after = error.response.headers.get("retry-after")
+    hint = f" (retry-after={retry_after}s)" if retry_after else ""
+    return f"LLM rate limit, giving up{hint}: {error}"
+
+
 class GenerateThreadsNameStep(ResumableStep):
     def __init__(self, path_manager: FilePathManager, model: str, client: OpenAI):
         self._path_manager = path_manager
@@ -62,7 +68,7 @@ class GenerateThreadsNameStep(ResumableStep):
             result = response.choices[0].message.content
             logger.debug(result)
         except RateLimitError as e:
-            logger.error(f"Failed after multiple retries due to rate limits: {e}")
+            logger.error(_rate_limit_message(e))
             result = ""
         except Exception as e:
             logger.error(f"Error during LLM call: {e}")
