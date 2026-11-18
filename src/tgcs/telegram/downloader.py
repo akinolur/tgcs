@@ -10,6 +10,7 @@ from telethon.tl import types
 from tgcs.dates import today
 from tgcs.history_files import (
     raw_history_bounds,
+    repair_raw_history_tail,
     split_raw_history,
     update_raw_history,
 )
@@ -137,6 +138,7 @@ class TelegramChatHistoryDownloader:
         offset_date = today() - timedelta(days=previous_days)
         if start_from_yesterday:
             offset_date = offset_date - timedelta(days=1)
+        repair_raw_history_tail(self.path_manager, group_name)
         _, first_message_date, last_message_id, _ = raw_history_bounds(
             self.path_manager, group_name
         )

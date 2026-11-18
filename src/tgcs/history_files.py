@@ -105,8 +105,7 @@ def update_raw_history(path_manager: "FilePathManager", messages, group_name):
         _rewrite_jsonl(filename, messages)
         return len(messages)
 
-    if truncate_partial_tail(filename):
-        logger.warning(f"{group_name}: dropped a partial record from {filename}")
+    repair_raw_history_tail(path_manager, group_name)
     last_line = read_last_line(filename)
     if not last_line.strip():
         # empty, or emptied by the repair above
@@ -168,13 +167,22 @@ def write_daily_history(
         _rewrite_jsonl(filename, day_messages)
 
 
+def repair_raw_history_tail(path_manager: "FilePathManager", group_name) -> None:
+    filename = path_manager.raw_history_path(group_name)
+    if os.path.exists(filename) and truncate_partial_tail(filename):
+        logger.warning(f"{group_name}: dropped a partial record from {filename}")
+
+
 def raw_history_bounds(path_manager: "FilePathManager", group_name):
     """Return (first_id, first_date, last_id, last_date) of the raw history."""
     filename = path_manager.raw_history_path(group_name)
     if not os.path.exists(filename):
         return None, None, None, None
     with open(filename, "rb") as f:
-        first = json.loads(f.readline())
+        first_line = f.readline()
+    if not first_line.strip():
+        return None, None, None, None
+    first = json.loads(first_line)
     last = json.loads(read_last_line(filename))
     return (
         first["id"],

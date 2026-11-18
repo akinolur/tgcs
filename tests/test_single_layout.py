@@ -190,6 +190,41 @@ def test_a_wholly_partial_raw_file_is_repaired(tmp_path):
     assert _raw_ids(path_manager) == [1]
 
 
+def test_download_repairs_a_partial_last_record_before_resuming(tmp_path):
+    # given
+    messages = [FakeMessage(i, f"m{i}") for i in (1, 2)]
+    downloader = _downloader(tmp_path, messages)
+    path_manager = downloader.path_manager
+    _make_single_layout(path_manager)
+    downloader.download_chat_history("quiet_chat")
+    with open(path_manager.raw_history_path("quiet_chat"), "a") as f:
+        f.write('{"id":3,"te')
+
+    # when
+    downloader._client.messages.append(FakeMessage(3, "m3"))
+    _, count = downloader.download_chat_history("quiet_chat")
+
+    # then
+    assert count == 1
+    assert _raw_ids(path_manager) == [1, 2, 3]
+
+
+def test_download_starts_over_when_the_raw_file_is_wholly_partial(tmp_path):
+    # given
+    downloader = _downloader(tmp_path, [FakeMessage(1, "m1")])
+    path_manager = downloader.path_manager
+    _make_single_layout(path_manager)
+    with open(path_manager.raw_history_path("quiet_chat"), "w") as f:
+        f.write('{"id":1,"te')
+
+    # when
+    _, count = downloader.download_chat_history("quiet_chat")
+
+    # then
+    assert count == 1
+    assert _raw_ids(path_manager) == [1]
+
+
 def test_stale_date_folders_are_not_summarized_after_switching_to_single(tmp_path):
     # given: a chat downloaded as daily, then switched to single
     from tgcs.summary_creator import SummaryCreator
