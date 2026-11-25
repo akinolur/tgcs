@@ -1,9 +1,9 @@
-import fcntl
 import json
 import logging
 import os
 
 from tgcs.dates import cutoff
+from tgcs.fs import locker
 from tgcs.layouts import Layout
 from tgcs.paths import FilePathManager, write_text_atomic
 from tgcs.workflows.base import WorkflowExecutor
@@ -69,11 +69,9 @@ class SummaryCreator:
         """
         lock_file_path = self.path_manager.lock_path(group_name, date)
         fd = os.open(lock_file_path, os.O_CREAT | os.O_RDWR, 0o644)
-        try:
-            # the kernel drops this when the holder exits or is killed, so a
-            # crashed run cannot leave a lock that blocks the date forever
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
+        # the kernel drops this when the holder exits or is killed, so a
+        # crashed run cannot leave a lock that blocks the date forever
+        if not locker.try_lock(fd):
             os.close(fd)
             logger.info(f"[{date}] {group_name}: locked by another run, skipping")
             return False
@@ -94,6 +92,7 @@ class SummaryCreator:
         # date in parallel. closing the descriptor releases the flock, which is
         # what actually guards the date
         os.ftruncate(fd, 0)
+        locker.unlock(fd)
         os.close(fd)
 
     def process_unprocessed_dates(self, group_name, n=None, last_days=None):
@@ -119,10 +118,10 @@ class SummaryCreator:
         Process the date
         """
         date_history_path = self.path_manager.date_history_path(group_name, date)
-        with open(date_history_path, "r") as f:
+        with open(date_history_path, "r", encoding="utf-8") as f:
             history_raw = f.read()
         metadata_path = self.path_manager.group_metadata_path(group_name)
-        with open(metadata_path, "r") as f:
+        with open(metadata_path, "r", encoding="utf-8") as f:
             metadata = json.load(f)
         context = {
             "link_prefix": metadata["link_prefix"],

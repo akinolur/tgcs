@@ -1,11 +1,10 @@
-import fcntl
 import json
 import logging
 import os
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from pathlib import Path
 
+from tgcs.fs import fsync_folder, lock_folder
 from tgcs.layouts import Layout
 
 logger = logging.getLogger(__name__)
@@ -16,16 +15,12 @@ def write_text_atomic(path: str, text: str) -> None:
     it partial. The fsyncs make the content and the rename survive a power loss.
     """
     tmp_path = f"{path}.{os.getpid()}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp_path, path)
-    fd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    fsync_folder(os.path.dirname(path) or ".")
 
 
 class FilePathManager:
@@ -133,14 +128,8 @@ class FilePathManager:
         metadata = self.read_metadata(group_name)
         return metadata is not None and metadata.get("id") is None
 
-    @contextmanager
-    def lock_metadata(self) -> Iterator[None]:
-        fd = os.open(self.base_path, os.O_RDONLY)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            yield
-        finally:
-            os.close(fd)
+    def lock_metadata(self) -> AbstractContextManager[None]:
+        return lock_folder(self.base_path)
 
     def write_metadata(self, group_name: str, metadata: dict) -> None:
         """Replace metadata atomically, via a tmp sibling.

@@ -29,7 +29,7 @@ class GenerateThreadsNameStep(ResumableStep):
         additional_requirements_path = self._path_manager.additional_requirements_path(
             group_name
         )
-        with open(additional_requirements_path, "r") as f:
+        with open(additional_requirements_path, "r", encoding="utf-8") as f:
             return f.read()
 
     def _call_llm(self, system_prompt, user_prompt, schema):
@@ -81,14 +81,14 @@ class GenerateThreadsNameStep(ResumableStep):
 
     def load_result(self, data: Any, context: Any) -> Any:
         result_path = self._get_result_path(context)
-        with open(result_path, "r") as f:
+        with open(result_path, "r", encoding="utf-8") as f:
             return f.read()
 
     def save_result(self, data: Any, context: Any, result) -> None:
         if not result:
             return
         result_path = self._get_result_path(context)
-        with open(result_path, "w") as f:
+        with open(result_path, "w", encoding="utf-8") as f:
             f.write(result)
 
     def _get_result_path(self, context: Any):

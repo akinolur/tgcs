@@ -109,7 +109,7 @@ def preview(ctx: typer.Context):
     container: "Container" = ctx.obj
     path = container.cfg.summary_template_path
     if path and path.exists():
-        template = path.read_text()
+        template = path.read_text(encoding="utf-8")
         typer.echo(f"Template: {path}\n")
     else:
         template = DEFAULT_SUMMARY_TEMPLATE

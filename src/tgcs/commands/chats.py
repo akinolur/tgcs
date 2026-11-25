@@ -325,7 +325,7 @@ def _download_one(
         logger.error(f"{group_name}: unknown chat. Run 'tgcs chats update' first.")
         return False
     try:
-        with open(metadata_path) as f:
+        with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
         count = tg_downloader.download_chat_history(
             group_name, _chat_peer_from_metadata(metadata), days

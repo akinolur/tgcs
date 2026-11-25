@@ -40,7 +40,7 @@ class Notificator:
             summary_path = self._path_manager.summary_path(group_name, date)
             notified_path = self._path_manager.notified_path(group_name, date)
             if os.path.exists(summary_path) and not os.path.exists(notified_path):
-                with open(summary_path, "r") as f:
+                with open(summary_path, "r", encoding="utf-8") as f:
                     result.append((date, f.read()))
         return result
 
