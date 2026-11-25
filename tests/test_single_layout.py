@@ -22,6 +22,7 @@ class FakeMessage:
     def __init__(self, msg_id, text, reply_to=None, at=None):
         self.id = msg_id
         self.message = text
+        self.reply_to = None
         self.reply_to_msg_id = reply_to
         self.date = at or datetime.now(timezone.utc)
         self.from_id = types.PeerUser(user_id=7)
@@ -78,10 +79,10 @@ def test_download_writes_only_the_raw_file_and_no_date_folders(tmp_path):
     _make_single_layout(path_manager)
 
     # when
-    group_name, count = downloader.download_chat_history("quiet_chat")
+    count = downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # then: today's messages are kept, and nothing was split by date
-    assert (group_name, count) == ("quiet_chat", 2)
+    assert count == 2
     assert _raw_ids(path_manager) == [1, 2]
     history_dir = path_manager.history_folder_path("quiet_chat")
     assert os.listdir(history_dir) == ["raw_chat_history.jsonl"]
@@ -98,7 +99,7 @@ def test_daily_layout_still_splits_by_date(tmp_path):
     path_manager.create_folders_if_not_exists("quiet_chat")
 
     # when
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # then
     day = yesterday.date().isoformat()
@@ -110,11 +111,11 @@ def test_second_download_appends_only_new_messages(tmp_path):
     downloader = _downloader(tmp_path, [FakeMessage(1, "hi"), FakeMessage(2, "there")])
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # when: one more message arrives
     downloader._client.messages.append(FakeMessage(3, "later"))
-    _, count = downloader.download_chat_history("quiet_chat")
+    count = downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # then
     assert count == 1
@@ -196,13 +197,13 @@ def test_download_repairs_a_partial_last_record_before_resuming(tmp_path):
     downloader = _downloader(tmp_path, messages)
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
     with open(path_manager.raw_history_path("quiet_chat"), "a") as f:
         f.write('{"id":3,"te')
 
     # when
     downloader._client.messages.append(FakeMessage(3, "m3"))
-    _, count = downloader.download_chat_history("quiet_chat")
+    count = downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # then
     assert count == 1
@@ -218,7 +219,7 @@ def test_download_starts_over_when_the_raw_file_is_wholly_partial(tmp_path):
         f.write('{"id":1,"te')
 
     # when
-    _, count = downloader.download_chat_history("quiet_chat")
+    count = downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # then
     assert count == 1
@@ -249,7 +250,7 @@ def test_chats_ls_counts_messages_from_the_raw_file(tmp_path, capsys):
     )
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # when
     _get_chats(path_manager)
@@ -270,7 +271,7 @@ def test_chats_ls_json_reports_typed_fields(tmp_path, capsys):
     )
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # when
     _get_chats(path_manager, OutputFormat.JSON)
@@ -303,7 +304,7 @@ def test_threads_ls_builds_threads_from_the_whole_file(tmp_path, capsys):
     downloader = _downloader(tmp_path, messages)
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # when
     _list_threads(
@@ -328,7 +329,7 @@ def test_threads_ls_rejects_date_selectors(tmp_path):
     downloader = _downloader(tmp_path, [FakeMessage(1, "hi")])
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # when / then
     with pytest.raises(typer.Exit) as ex:
@@ -354,7 +355,7 @@ def test_threads_dump_names_files_after_the_single_slice(tmp_path):
     downloader = _downloader(tmp_path, messages)
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # when
     _dump_threads(path_manager, name="quiet_chat", min_msgs=4, force=False)
@@ -373,7 +374,7 @@ def test_switching_back_to_daily_backfills_every_date_folder(tmp_path):
     )
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
     assert not os.path.exists(
         path_manager.date_history_folder_path("quiet_chat", "2025-03-01")
     )
@@ -387,6 +388,66 @@ def test_switching_back_to_daily_backfills_every_date_folder(tmp_path):
         assert [json.loads(line)["id"] for line in f] == [1, 2]
 
 
+def test_failed_split_keeps_the_single_layout_and_a_retry_splits(tmp_path, capsys):
+    # given
+    from tgcs.commands.chats import chat_layout
+
+    old = datetime(2025, 3, 1, 9, 0, tzinfo=timezone.utc)
+    downloader = _downloader(tmp_path, [FakeMessage(1, "hi", at=old)])
+    path_manager = downloader.path_manager
+    _make_single_layout(path_manager)
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
+    raw_path = path_manager.raw_history_path("quiet_chat")
+    with open(raw_path) as f:
+        good = f.read()
+    with open(raw_path, "a") as f:
+        f.write("not json\n")
+    ctx = SimpleNamespace(obj=SimpleNamespace(path_manager=path_manager))
+
+    # when
+    with pytest.raises(json.JSONDecodeError):
+        chat_layout(ctx, name="quiet_chat", value=Layout.DAILY)
+
+    # then
+    assert path_manager.layout("quiet_chat") is Layout.SINGLE
+    assert "layout set" not in capsys.readouterr().out
+
+    # when
+    with open(raw_path, "w") as f:
+        f.write(good)
+    chat_layout(ctx, name="quiet_chat", value=Layout.DAILY)
+
+    # then
+    assert path_manager.layout("quiet_chat") is Layout.DAILY
+    assert os.path.exists(path_manager.date_history_path("quiet_chat", "2025-03-01"))
+
+
+def test_layout_change_of_an_unknown_chat_does_not_split(tmp_path, capsys):
+    # given
+    from tgcs.commands.chats import chat_layout
+
+    old = datetime(2025, 3, 1, 9, 0, tzinfo=timezone.utc)
+    downloader = _downloader(tmp_path, [])
+    path_manager = FilePathManager(
+        base_path=str(tmp_path / "data"), default_layout=Layout.SINGLE
+    )
+    path_manager.create_folders_if_not_exists("quiet_chat")
+    message = downloader._prepare_message(FakeMessage(1, "hi", at=old))
+    update_raw_history(path_manager, [message], "quiet_chat")
+    ctx = SimpleNamespace(obj=SimpleNamespace(path_manager=path_manager))
+
+    # when
+    with pytest.raises(typer.Exit) as ex:
+        chat_layout(ctx, name="quiet_chat", value=Layout.DAILY)
+
+    # then
+    assert ex.value.exit_code == 1
+    assert "unknown chat" in capsys.readouterr().out
+    assert os.listdir(path_manager.history_folder_path("quiet_chat")) == [
+        "raw_chat_history.jsonl"
+    ]
+
+
 def test_summarization_skips_a_single_layout_chat(tmp_path):
     # given: a downloaded single-layout chat has no date folders to summarize
     from tgcs.summary_creator import SummaryCreator
@@ -394,7 +455,7 @@ def test_summarization_skips_a_single_layout_chat(tmp_path):
     downloader = _downloader(tmp_path, [FakeMessage(1, "hi")])
     path_manager = downloader.path_manager
     _make_single_layout(path_manager)
-    downloader.download_chat_history("quiet_chat")
+    downloader.download_chat_history("quiet_chat", "quiet_chat")
 
     # when: workflow is None, so touching it would raise
     creator = SummaryCreator(path_manager, workflow=None)

@@ -87,7 +87,7 @@ def _dump_jsonl(messages) -> str:
 
 def _append_jsonl(path: str, messages) -> None:
     """Append records in one write, then fsync so they are actually on disk."""
-    with open(path, "a", encoding="utf-8") as f:
+    with open(path, "a", encoding="utf-8", newline="\n") as f:
         f.write(_dump_jsonl(messages))
         f.flush()
         os.fsync(f.fileno())

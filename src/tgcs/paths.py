@@ -1,8 +1,10 @@
 import json
 import logging
 import os
+from contextlib import AbstractContextManager
 from pathlib import Path
 
+from tgcs.fs import fsync_folder, lock_file
 from tgcs.layouts import Layout
 
 logger = logging.getLogger(__name__)
@@ -13,16 +15,12 @@ def write_text_atomic(path: str, text: str) -> None:
     it partial. The fsyncs make the content and the rename survive a power loss.
     """
     tmp_path = f"{path}.{os.getpid()}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp_path, path)
-    fd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    fsync_folder(os.path.dirname(path) or ".")
 
 
 class FilePathManager:
@@ -42,6 +40,7 @@ class FilePathManager:
         self.raw_history_filename = "raw_chat_history.jsonl"
         self.summary_filename = "summary.md"
         self.lock_filename = "processing.lock"
+        self.metadata_lock_filename = ".metadata.lock"
         self.group_metadata_filename = "metadata.json"
         self.additional_requirements_filename = "additional_requirements.md"
         self.thread_names_filename_raw = "thread_names_raw.txt"
@@ -103,10 +102,35 @@ class FilePathManager:
             return None
         try:
             with open(metadata_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError) as ex:
+                metadata = json.load(f)
+        except (OSError, ValueError) as ex:
             logger.warning(f"Skipping {group_name}: cannot read {metadata_path}: {ex}")
             return None
+        if not isinstance(metadata, dict):
+            logger.warning(
+                f"Skipping {group_name}: {metadata_path} is not a JSON object"
+            )
+            return None
+        return metadata
+
+    def is_group_name_free(self, group_name: str) -> bool:
+        group_path = os.path.join(self.base_path, group_name)
+        if not os.path.lexists(group_path):
+            return True
+        if not os.path.isdir(group_path):
+            return False
+        history_path = self.history_folder_path(group_name)
+        if os.path.lexists(history_path) and (
+            not os.path.isdir(history_path) or os.listdir(history_path)
+        ):
+            return False
+        if not os.path.lexists(self.group_metadata_path(group_name)):
+            return True
+        metadata = self.read_metadata(group_name)
+        return metadata is not None and metadata.get("id") is None
+
+    def lock_metadata(self) -> AbstractContextManager[None]:
+        return lock_file(os.path.join(self.base_path, self.metadata_lock_filename))
 
     def write_metadata(self, group_name: str, metadata: dict) -> None:
         """Replace metadata atomically, via a tmp sibling.
@@ -141,13 +165,14 @@ class FilePathManager:
 
     def set_layout(self, group_name: str, layout: Layout) -> bool:
         """Write the layout of one chat. False when there is no metadata to update."""
-        metadata = self.read_metadata(group_name)
-        if metadata is None:
-            # nothing safe to rewrite; the warning is already logged
-            return False
-        metadata["layout"] = str(layout)
-        self.write_metadata(group_name, metadata)
-        return True
+        with self.lock_metadata():
+            metadata = self.read_metadata(group_name)
+            if metadata is None:
+                # nothing safe to rewrite; the warning is already logged
+                return False
+            metadata["layout"] = str(layout)
+            self.write_metadata(group_name, metadata)
+            return True
 
     def is_downloading_enabled(self, group_name: str) -> bool:
         metadata = self.read_metadata(group_name)
@@ -159,15 +184,16 @@ class FilePathManager:
         return self._flag(metadata, "summarization_enabled") if metadata else False
 
     def set_downloading_enabled(self, group_name: str, enabled: bool) -> None:
-        metadata = self.read_metadata(group_name)
-        if metadata is None:
-            # nothing safe to rewrite; the warning is already logged
-            return
-        legacy_enabled = metadata.pop("enabled", None)
-        if legacy_enabled is not None:
-            metadata.setdefault("summarization_enabled", legacy_enabled)
-        metadata["downloading_enabled"] = enabled
-        self.write_metadata(group_name, metadata)
+        with self.lock_metadata():
+            metadata = self.read_metadata(group_name)
+            if metadata is None:
+                # nothing safe to rewrite; the warning is already logged
+                return
+            legacy_enabled = metadata.pop("enabled", None)
+            if legacy_enabled is not None:
+                metadata.setdefault("summarization_enabled", legacy_enabled)
+            metadata["downloading_enabled"] = enabled
+            self.write_metadata(group_name, metadata)
 
     def download_groups_list(self) -> list[str]:
         return [name for name, downloading, _ in self.all_groups_list() if downloading]

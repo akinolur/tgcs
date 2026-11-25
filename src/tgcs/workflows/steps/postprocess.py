@@ -22,7 +22,7 @@ class PostProcessStep(Step):
         path_manager: "FilePathManager | None" = None,
     ):
         if template_path is not None and template_path.exists():
-            self.template = template_path.read_text()
+            self.template = template_path.read_text(encoding="utf-8")
         else:
             self.template = DEFAULT_SUMMARY_TEMPLATE
         self._path_manager = path_manager

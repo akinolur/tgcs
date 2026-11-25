@@ -26,6 +26,7 @@ Each chat picks one of two history layouts (`Layout` in `layouts.py`), from its 
 {data_dir}/
   user.session
   bot.session
+  .metadata.lock
   {group_name}/
     metadata.json
     additional_requirements.md

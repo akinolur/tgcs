@@ -2,6 +2,8 @@ import json
 import logging
 import os
 from datetime import timedelta
+from enum import StrEnum
+from itertools import count
 from typing import TYPE_CHECKING
 
 from telethon import functions
@@ -31,6 +33,10 @@ class FolderNotFoundError(Exception):
     """The configured telegram folder does not exist."""
 
 
+class DuplicateChatFolderError(Exception):
+    pass
+
+
 def _extract_reactions(message: "Message") -> dict[str, int]:
     if message.reactions is None:
         return {}
@@ -54,7 +60,60 @@ def _format_from_id(message: "Message") -> str | None:
     # the channel the message was posted as
     if message.sender_id is None:
         return None
+    if (
+        isinstance(message.peer_id, types.PeerUser)
+        and message.peer_id.user_id == message.sender_id
+    ):
+        return f"user{message.sender_id}"
     return f"channel{message.sender_id}"
+
+
+_FOLDER_NAME_TABLE = str.maketrans(dict.fromkeys('/\\:*?"<>|', "_"))
+
+
+class PeerKind(StrEnum):
+    USER = "user"
+    CHAT = "chat"
+    CHANNEL = "channel"
+
+
+_KIND_BY_TYPE = {
+    "User": PeerKind.USER,
+    "UserEmpty": PeerKind.USER,
+    "Chat": PeerKind.CHAT,
+    "ChatEmpty": PeerKind.CHAT,
+    "ChatForbidden": PeerKind.CHAT,
+    "Channel": PeerKind.CHANNEL,
+    "ChannelForbidden": PeerKind.CHANNEL,
+    "Community": PeerKind.CHANNEL,
+    "CommunityForbidden": PeerKind.CHANNEL,
+}
+
+
+def peer_kind(type_name: str | None, access_hash: int | None) -> PeerKind:
+    guessed = PeerKind.CHANNEL if access_hash else PeerKind.CHAT
+    return _KIND_BY_TYPE.get(type_name, guessed)
+
+
+def _is_same_peer(metadata: dict, entity) -> bool:
+    return metadata.get("id") == entity.id and peer_kind(
+        metadata.get("type"), metadata.get("access_hash")
+    ) == peer_kind(type(entity).__name__, getattr(entity, "access_hash", None))
+
+
+def _local_reply_id(message: "Message") -> int | None:
+    reply_peer = getattr(message.reply_to, "reply_to_peer_id", None)
+    if reply_peer is not None and reply_peer != message.peer_id:
+        return None
+    return message.reply_to_msg_id
+
+
+def _peer_key(peer) -> tuple[str, int | None]:
+    for field in ("user_id", "chat_id", "channel_id"):
+        peer_id = getattr(peer, field, None)
+        if peer_id is not None:
+            return field, peer_id
+    return type(peer).__name__, None
 
 
 class TelegramChatHistoryDownloader:
@@ -81,7 +140,7 @@ class TelegramChatHistoryDownloader:
             "from_username": message.sender.username if message.sender else None,
             "from_id": _format_from_id(message),
             "text": message.message,
-            "reply_to_message_id": message.reply_to_msg_id,
+            "reply_to_message_id": _local_reply_id(message),
             "reactions": _extract_reactions(message),
         }
 
@@ -116,22 +175,53 @@ class TelegramChatHistoryDownloader:
             title = self._display_title(entity)
             group_name = str(title).lower().strip().replace(" ", "_")
             # titles are free text: keep the name a single path segment
-            group_name = group_name.replace("/", "_").replace("\\", "_")
+            group_name = group_name.translate(_FOLDER_NAME_TABLE)
             if group_name.strip(".") == "":
                 group_name = f"chat_{entity.id}"
         return group_name
 
+    def _get_entity(self, peer):
+        entity = self._client.get_entity(peer)
+        if getattr(entity, "access_hash", 0) is None:
+            entity.access_hash = getattr(peer, "access_hash", None)
+        return entity
+
+    def _known_group_name(self, entity) -> str | None:
+        known = sorted(
+            group_name
+            for group_name, _, _ in self.path_manager.all_groups_list()
+            if _is_same_peer(self.path_manager.read_metadata(group_name) or {}, entity)
+        )
+        if len(known) > 1:
+            folders = ", ".join(repr(group_name) for group_name in known)
+            raise DuplicateChatFolderError(
+                f"Chat {self._display_title(entity)!r} has more than one folder: "
+                f"{folders}."
+            )
+        return known[0] if known else None
+
+    def _resolve_group_name(self, entity) -> str:
+        known = self._known_group_name(entity)
+        if known is not None:
+            return known
+        name = self._get_group_name(entity)
+        if self.path_manager.is_group_name_free(name):
+            return name
+        name_with_id = f"{name}_{entity.id}"
+        if self.path_manager.is_group_name_free(name_with_id):
+            return name_with_id
+        for n in count(2):
+            candidate = f"{name_with_id}_{n}"
+            if self.path_manager.is_group_name_free(candidate):
+                return candidate
+
     def download_chat_history(
-        self, chat_peer, previous_days=0, start_from_yesterday=True
+        self, group_name, chat_peer, previous_days=0, start_from_yesterday=True
     ):
-        # group_name = group_name.strip().strip('"')
         client = self._client
-        # find the group by name
-        # entity = self.get_entity_safely(chat_peer)
-        entity = client.get_entity(chat_peer)
-        # if isinstance(group_id, int):
-        group_name = self._get_group_name(entity)
-        self._save_chat_metadata(group_name, entity)
+        entity = self._get_entity(chat_peer)
+        with self.path_manager.lock_metadata():
+            self._save_chat_metadata(group_name, entity, enable_downloading=False)
 
         messages = []
         # utc: telegram timestamps and the date-named folders are both utc
@@ -175,17 +265,21 @@ class TelegramChatHistoryDownloader:
         # the single layout keeps the whole chat in the raw file and never splits it
         if self.path_manager.layout(group_name) is not Layout.SINGLE:
             split_raw_history(self.path_manager, group_name, date_from=offset_date)
-        return group_name, new_messages_count
+        return new_messages_count
 
     # metadata
     def download_chat_metadata(self, folder_name: str):
-        client = self._client
         chat_peers = self.get_chat_peers_from_folder(folder_name)
+        entities = [self._get_entity(chat_peer) for chat_peer in chat_peers]
+        for entity in entities:
+            self._known_group_name(entity)
         group_names = {}
-        for chat_peer in chat_peers:
-            entity = client.get_entity(chat_peer)
-            group_name = self._get_group_name(entity)
-            is_new = self._save_chat_metadata(group_name, entity)
+        for entity in entities:
+            with self.path_manager.lock_metadata():
+                group_name = self._resolve_group_name(entity)
+                is_new = self._save_chat_metadata(
+                    group_name, entity, enable_downloading=True
+                )
             _ = self._save_additional_requirements(group_name, "")
             group_names[group_name] = is_new
         if not group_names:
@@ -201,7 +295,7 @@ class TelegramChatHistoryDownloader:
                 self.path_manager.set_downloading_enabled(existing_name, False)
         return group_names
 
-    def _save_chat_metadata(self, group_name, entity):
+    def _save_chat_metadata(self, group_name, entity, *, enable_downloading: bool):
         self.path_manager.create_folders_if_not_exists(group_name)
         filename = self.path_manager.group_metadata_path(group_name)
         link_prefix = self.get_message_link_prefix(entity)
@@ -211,6 +305,12 @@ class TelegramChatHistoryDownloader:
             is_new = False
             with open(filename, encoding="utf-8") as f:
                 existing = json.load(f)
+        downloading_enabled = enable_downloading or existing.get(
+            "downloading_enabled", existing.get("enabled", True)
+        )
+        access_hash = getattr(entity, "access_hash", 0)
+        if access_hash is None and _is_same_peer(existing, entity):
+            access_hash = existing.get("access_hash")
         # only downloading_enabled is derived from telegram folder membership,
         # every other key (summarization_enabled included) is kept as is
         legacy_enabled = existing.pop("enabled", None)
@@ -221,12 +321,12 @@ class TelegramChatHistoryDownloader:
             {
                 **existing,
                 "id": entity.id,
-                "access_hash": getattr(entity, "access_hash", 0),
+                "access_hash": access_hash,
                 "title": self._display_title(entity),
                 "username": getattr(entity, "username", None),
                 "link_prefix": link_prefix,
                 "type": type(entity).__name__,
-                "downloading_enabled": True,
+                "downloading_enabled": downloading_enabled,
             },
         )
         return is_new
@@ -243,8 +343,10 @@ class TelegramChatHistoryDownloader:
     # WORK WITH FOLDER
     def get_chat_peers_from_folder(self, folder_name: str):
         folder = self._get_folder_by_name(folder_name)
-        chat_peers = [ch for ch in folder.include_peers]
-        return chat_peers
+        chat_peers = {}
+        for peer in [*folder.pinned_peers, *folder.include_peers]:
+            chat_peers.setdefault(_peer_key(peer), peer)
+        return list(chat_peers.values())
 
     def _get_folder_by_name(self, folder_name: str):
         client = self._client

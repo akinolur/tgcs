@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import TYPE_CHECKING, Optional, assert_never
+from typing import TYPE_CHECKING, NoReturn, Optional, assert_never
 
 import typer
 
@@ -193,12 +193,9 @@ def chat_layout(
     if value is None:
         typer.echo(str(path_manager.layout(name)))
         return
-    previous = path_manager.layout(name)
-    if not path_manager.set_layout(name, value):
-        typer.echo(f"{name}: unknown chat. Run 'tgcs chats update' first.")
-        raise typer.Exit(code=1)
-    typer.echo(f"{name}: layout set to {str(value)}")
-    if previous is Layout.SINGLE and value is Layout.DAILY:
+    if path_manager.read_metadata(name) is None:
+        _exit_unknown_chat(name)
+    if path_manager.layout(name) is Layout.SINGLE and value is Layout.DAILY:
         # the single layout never wrote date folders, and the next download only
         # splits its own window, so backfill the whole raw file now
         typer.echo(
@@ -207,6 +204,14 @@ def chat_layout(
         from tgcs.history_files import split_raw_history
 
         split_raw_history(path_manager, name)
+    if not path_manager.set_layout(name, value):
+        _exit_unknown_chat(name)
+    typer.echo(f"{name}: layout set to {str(value)}")
+
+
+def _exit_unknown_chat(name: str) -> NoReturn:
+    typer.echo(f"{name}: unknown chat. Run 'tgcs chats update' first.")
+    raise typer.Exit(code=1)
 
 
 @app.command(name="update")
@@ -217,13 +222,19 @@ def get_chats_metadata(ctx: typer.Context):
     if not group_folder:
         typer.echo(f"telegram.group_folder is not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
-    from tgcs.telegram.downloader import FolderNotFoundError
+    from tgcs.telegram.downloader import (
+        DuplicateChatFolderError,
+        FolderNotFoundError,
+    )
 
     try:
         _get_chats_metadata(group_folder, container.user_client, container.path_manager)
     except FolderNotFoundError as ex:
         typer.echo(str(ex))
         typer.echo(f"Fix telegram.group_folder in {container.config_path}.")
+        raise typer.Exit(code=1) from ex
+    except DuplicateChatFolderError as ex:
+        typer.echo(str(ex))
         raise typer.Exit(code=1) from ex
 
 
@@ -284,13 +295,25 @@ def download(
 
 
 def _chat_peer_from_metadata(metadata: dict):
-    from telethon.tl.types import InputPeerChannel, InputPeerUser
+    from telethon.tl.types import (
+        InputPeerChannel,
+        InputPeerChat,
+        InputPeerUser,
+    )
+
+    from tgcs.telegram.downloader import PeerKind, peer_kind
 
     chat_id = metadata["id"]
     access_hash = metadata.get("access_hash", 0)
-    if metadata.get("type") == "User":
+    kind = peer_kind(metadata.get("type"), access_hash)
+    if kind is PeerKind.USER:
         return InputPeerUser(chat_id, access_hash)
-    return InputPeerChannel(chat_id, access_hash) if access_hash else chat_id
+    elif kind is PeerKind.CHAT:
+        return InputPeerChat(chat_id)
+    elif kind is PeerKind.CHANNEL:
+        return InputPeerChannel(chat_id, access_hash or 0)
+    else:
+        assert_never(kind)
 
 
 def _download_one(
@@ -302,12 +325,12 @@ def _download_one(
         logger.error(f"{group_name}: unknown chat. Run 'tgcs chats update' first.")
         return False
     try:
-        with open(metadata_path) as f:
+        with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
-        name, count = tg_downloader.download_chat_history(
-            _chat_peer_from_metadata(metadata), days
+        count = tg_downloader.download_chat_history(
+            group_name, _chat_peer_from_metadata(metadata), days
         )
-        logger.info(f"{name}: {count} new messages")
+        logger.info(f"{group_name}: {count} new messages")
         return True
     except Exception as ex:
         logger.error(f"{group_name}: {ex}")
