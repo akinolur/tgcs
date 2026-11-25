@@ -90,7 +90,7 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # url = "https://api.groq.com/openai/v1"
 
 [settings]
-# previous_days = 5
+# previous_days = 0
 # default history layout for chats without their own: "daily" or "single"
 # layout = "{layout}"
 summary_template = "{summary_template}"
