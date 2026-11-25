@@ -51,9 +51,14 @@ def path_manager(tmp_path):
     return path_manager
 
 
+def _open_lock_file(path_manager):
+    path = os.path.join(path_manager.base_path, ".metadata.lock")
+    return os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+
+
 @contextmanager
 def _another_process_holds_the_lock(path_manager, action):
-    fd = os.open(path_manager.base_path, os.O_RDONLY)
+    fd = _open_lock_file(path_manager)
     thread = threading.Thread(target=action, daemon=True)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
@@ -136,8 +141,19 @@ def test_lock_is_released_after_an_error(path_manager):
             raise RuntimeError("boom")
 
     # then
-    fd = os.open(path_manager.base_path, os.O_RDONLY)
+    fd = _open_lock_file(path_manager)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     finally:
         os.close(fd)
+
+
+def test_lock_file_is_kept_and_is_not_a_chat(path_manager):
+    # when
+    with path_manager.lock_metadata():
+        pass
+
+    # then
+    path = os.path.join(path_manager.base_path, ".metadata.lock")
+    assert os.path.isfile(path)
+    assert path_manager.all_groups_list() == []

@@ -4,7 +4,7 @@ import os
 from contextlib import AbstractContextManager
 from pathlib import Path
 
-from tgcs.fs import fsync_folder, lock_folder
+from tgcs.fs import fsync_folder, lock_file
 from tgcs.layouts import Layout
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ class FilePathManager:
         self.raw_history_filename = "raw_chat_history.jsonl"
         self.summary_filename = "summary.md"
         self.lock_filename = "processing.lock"
+        self.metadata_lock_filename = ".metadata.lock"
         self.group_metadata_filename = "metadata.json"
         self.additional_requirements_filename = "additional_requirements.md"
         self.thread_names_filename_raw = "thread_names_raw.txt"
@@ -129,7 +130,7 @@ class FilePathManager:
         return metadata is not None and metadata.get("id") is None
 
     def lock_metadata(self) -> AbstractContextManager[None]:
-        return lock_folder(self.base_path)
+        return lock_file(os.path.join(self.base_path, self.metadata_lock_filename))
 
     def write_metadata(self, group_name: str, metadata: dict) -> None:
         """Replace metadata atomically, via a tmp sibling.

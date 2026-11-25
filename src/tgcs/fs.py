@@ -11,7 +11,6 @@ except ImportError:
 
 _LOCK_POSITION = 1 << 30
 _RETRY_SECONDS = 0.05
-_FOLDER_LOCK_FILENAME = ".metadata.lock"
 
 
 class FlockLocker:
@@ -60,12 +59,8 @@ locker = FlockLocker() if fcntl else MsvcrtLocker(msvcrt)
 
 
 @contextmanager
-def lock_folder(path: str) -> Iterator[None]:
-    if fcntl:
-        fd = os.open(path, os.O_RDONLY)
-    else:
-        lock_path = os.path.join(path, _FOLDER_LOCK_FILENAME)
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+def lock_file(path: str) -> Iterator[None]:
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
     try:
         locker.lock(fd)
         try:
