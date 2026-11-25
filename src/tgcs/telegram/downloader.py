@@ -217,7 +217,8 @@ class TelegramChatHistoryDownloader:
     ):
         client = self._client
         entity = self._get_entity(chat_peer)
-        self._save_chat_metadata(group_name, entity, enable_downloading=False)
+        with self.path_manager.lock_metadata():
+            self._save_chat_metadata(group_name, entity, enable_downloading=False)
 
         messages = []
         # utc: telegram timestamps and the date-named folders are both utc
@@ -271,10 +272,11 @@ class TelegramChatHistoryDownloader:
             self._known_group_name(entity)
         group_names = {}
         for entity in entities:
-            group_name = self._resolve_group_name(entity)
-            is_new = self._save_chat_metadata(
-                group_name, entity, enable_downloading=True
-            )
+            with self.path_manager.lock_metadata():
+                group_name = self._resolve_group_name(entity)
+                is_new = self._save_chat_metadata(
+                    group_name, entity, enable_downloading=True
+                )
             _ = self._save_additional_requirements(group_name, "")
             group_names[group_name] = is_new
         if not group_names:

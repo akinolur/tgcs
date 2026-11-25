@@ -1,6 +1,9 @@
+import fcntl
 import json
 import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from tgcs.layouts import Layout
@@ -130,6 +133,15 @@ class FilePathManager:
         metadata = self.read_metadata(group_name)
         return metadata is not None and metadata.get("id") is None
 
+    @contextmanager
+    def lock_metadata(self) -> Iterator[None]:
+        fd = os.open(self.base_path, os.O_RDONLY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            os.close(fd)
+
     def write_metadata(self, group_name: str, metadata: dict) -> None:
         """Replace metadata atomically, via a tmp sibling.
 
@@ -163,13 +175,14 @@ class FilePathManager:
 
     def set_layout(self, group_name: str, layout: Layout) -> bool:
         """Write the layout of one chat. False when there is no metadata to update."""
-        metadata = self.read_metadata(group_name)
-        if metadata is None:
-            # nothing safe to rewrite; the warning is already logged
-            return False
-        metadata["layout"] = str(layout)
-        self.write_metadata(group_name, metadata)
-        return True
+        with self.lock_metadata():
+            metadata = self.read_metadata(group_name)
+            if metadata is None:
+                # nothing safe to rewrite; the warning is already logged
+                return False
+            metadata["layout"] = str(layout)
+            self.write_metadata(group_name, metadata)
+            return True
 
     def is_downloading_enabled(self, group_name: str) -> bool:
         metadata = self.read_metadata(group_name)
@@ -181,15 +194,16 @@ class FilePathManager:
         return self._flag(metadata, "summarization_enabled") if metadata else False
 
     def set_downloading_enabled(self, group_name: str, enabled: bool) -> None:
-        metadata = self.read_metadata(group_name)
-        if metadata is None:
-            # nothing safe to rewrite; the warning is already logged
-            return
-        legacy_enabled = metadata.pop("enabled", None)
-        if legacy_enabled is not None:
-            metadata.setdefault("summarization_enabled", legacy_enabled)
-        metadata["downloading_enabled"] = enabled
-        self.write_metadata(group_name, metadata)
+        with self.lock_metadata():
+            metadata = self.read_metadata(group_name)
+            if metadata is None:
+                # nothing safe to rewrite; the warning is already logged
+                return
+            legacy_enabled = metadata.pop("enabled", None)
+            if legacy_enabled is not None:
+                metadata.setdefault("summarization_enabled", legacy_enabled)
+            metadata["downloading_enabled"] = enabled
+            self.write_metadata(group_name, metadata)
 
     def download_groups_list(self) -> list[str]:
         return [name for name, downloading, _ in self.all_groups_list() if downloading]
