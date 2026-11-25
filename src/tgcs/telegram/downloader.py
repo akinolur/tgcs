@@ -139,7 +139,7 @@ class TelegramChatHistoryDownloader:
         entity = client.get_entity(chat_peer)
         # if isinstance(group_id, int):
         group_name = self._get_group_name(entity)
-        self._save_chat_metadata(group_name, entity)
+        self._save_chat_metadata(group_name, entity, enable_downloading=False)
 
         messages = []
         # utc: telegram timestamps and the date-named folders are both utc
@@ -193,7 +193,9 @@ class TelegramChatHistoryDownloader:
         for chat_peer in chat_peers:
             entity = client.get_entity(chat_peer)
             group_name = self._get_group_name(entity)
-            is_new = self._save_chat_metadata(group_name, entity)
+            is_new = self._save_chat_metadata(
+                group_name, entity, enable_downloading=True
+            )
             _ = self._save_additional_requirements(group_name, "")
             group_names[group_name] = is_new
         if not group_names:
@@ -209,7 +211,7 @@ class TelegramChatHistoryDownloader:
                 self.path_manager.set_downloading_enabled(existing_name, False)
         return group_names
 
-    def _save_chat_metadata(self, group_name, entity):
+    def _save_chat_metadata(self, group_name, entity, *, enable_downloading: bool):
         self.path_manager.create_folders_if_not_exists(group_name)
         filename = self.path_manager.group_metadata_path(group_name)
         link_prefix = self.get_message_link_prefix(entity)
@@ -219,6 +221,9 @@ class TelegramChatHistoryDownloader:
             is_new = False
             with open(filename, encoding="utf-8") as f:
                 existing = json.load(f)
+        downloading_enabled = enable_downloading or existing.get(
+            "downloading_enabled", existing.get("enabled", True)
+        )
         # only downloading_enabled is derived from telegram folder membership,
         # every other key (summarization_enabled included) is kept as is
         legacy_enabled = existing.pop("enabled", None)
@@ -234,7 +239,7 @@ class TelegramChatHistoryDownloader:
                 "username": getattr(entity, "username", None),
                 "link_prefix": link_prefix,
                 "type": type(entity).__name__,
-                "downloading_enabled": True,
+                "downloading_enabled": downloading_enabled,
             },
         )
         return is_new

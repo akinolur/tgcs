@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from tgcs.commands import summarize as summarize_module
 from tgcs.paths import FilePathManager
 from tgcs.telegram.downloader import TelegramChatHistoryDownloader
@@ -76,12 +78,51 @@ def test_chats_update_preserves_summarization_flag(tmp_path):
     )
 
     # when: the chat is still in the telegram folder
-    downloader._save_chat_metadata("muted", entity)
+    downloader._save_chat_metadata("muted", entity, enable_downloading=True)
 
     # then
     metadata = json.loads((tmp_path / "muted" / "metadata.json").read_text())
     assert metadata["summarization_enabled"] is False
     assert metadata["downloading_enabled"] is True
+    assert "enabled" not in metadata
+
+
+class _FakeClient:
+    def __init__(self, entity):
+        self._entity = entity
+
+    def get_entity(self, peer):
+        return self._entity
+
+    def iter_messages(self, **kwargs):
+        return []
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        ({"downloading_enabled": False}, False),
+        ({"downloading_enabled": True}, True),
+        ({"enabled": False}, False),
+        ({"enabled": True}, True),
+        ({"enabled": True, "downloading_enabled": False}, False),
+        ({}, True),
+    ],
+)
+def test_manual_download_keeps_downloading_enabled(tmp_path, flags, expected):
+    # given
+    _make_group(tmp_path, "chat", **flags)
+    path_manager = FilePathManager(base_path=str(tmp_path))
+    entity = SimpleNamespace(id=1, access_hash=2, title="chat", username="chat")
+    downloader = TelegramChatHistoryDownloader(_FakeClient(entity), path_manager)
+
+    # when
+    downloader.download_chat_history("chat")
+
+    # then
+    metadata = path_manager.read_metadata("chat")
+    assert metadata["downloading_enabled"] is expected
+    assert metadata.get("summarization_enabled") == flags.get("enabled")
     assert "enabled" not in metadata
 
 

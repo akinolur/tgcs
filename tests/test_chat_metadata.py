@@ -150,7 +150,7 @@ def test_save_chat_metadata_for_user_records_type_and_title(tmp_path):
     user = types.User(id=1, access_hash=42, first_name="Alice", last_name="Bobrova")
 
     # when
-    downloader._save_chat_metadata("alice_bobrova", user)
+    downloader._save_chat_metadata("alice_bobrova", user, enable_downloading=True)
 
     # then
     with open(path_manager.group_metadata_path("alice_bobrova")) as f:
