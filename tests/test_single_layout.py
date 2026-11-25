@@ -22,6 +22,7 @@ class FakeMessage:
     def __init__(self, msg_id, text, reply_to=None, at=None):
         self.id = msg_id
         self.message = text
+        self.reply_to = None
         self.reply_to_msg_id = reply_to
         self.date = at or datetime.now(timezone.utc)
         self.from_id = types.PeerUser(user_id=7)

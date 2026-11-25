@@ -62,6 +62,13 @@ def _format_from_id(message: "Message") -> str | None:
     return f"channel{message.sender_id}"
 
 
+def _local_reply_id(message: "Message") -> int | None:
+    reply_peer = getattr(message.reply_to, "reply_to_peer_id", None)
+    if reply_peer is not None and reply_peer != message.peer_id:
+        return None
+    return message.reply_to_msg_id
+
+
 def _peer_key(peer) -> tuple[str, int | None]:
     for field in ("user_id", "chat_id", "channel_id"):
         peer_id = getattr(peer, field, None)
@@ -94,7 +101,7 @@ class TelegramChatHistoryDownloader:
             "from_username": message.sender.username if message.sender else None,
             "from_id": _format_from_id(message),
             "text": message.message,
-            "reply_to_message_id": message.reply_to_msg_id,
+            "reply_to_message_id": _local_reply_id(message),
             "reactions": _extract_reactions(message),
         }
 

@@ -37,3 +37,37 @@ def test_from_id_has_the_prefix_of_the_sender(tmp_path, peer_id, kwargs, expecte
 
     # then
     assert prepared["from_id"] == expected
+
+
+@pytest.mark.parametrize(
+    ("reply_to", "expected"),
+    [
+        (None, None),
+        (types.MessageReplyHeader(reply_to_msg_id=3), 3),
+        (
+            types.MessageReplyHeader(
+                reply_to_msg_id=3, reply_to_peer_id=types.PeerChannel(1)
+            ),
+            3,
+        ),
+        (
+            types.MessageReplyHeader(
+                reply_to_msg_id=3, reply_to_peer_id=types.PeerChannel(2)
+            ),
+            None,
+        ),
+        (
+            types.MessageReplyHeader(
+                reply_to_msg_id=3, reply_to_peer_id=types.PeerUser(1)
+            ),
+            None,
+        ),
+        (types.MessageReplyStoryHeader(peer=types.PeerUser(1), story_id=3), None),
+    ],
+)
+def test_reply_is_kept_only_for_this_chat(tmp_path, reply_to, expected):
+    # when
+    prepared = _prepare(tmp_path, types.PeerChannel(1), reply_to=reply_to)
+
+    # then
+    assert prepared["reply_to_message_id"] == expected
