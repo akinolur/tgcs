@@ -103,10 +103,32 @@ class FilePathManager:
             return None
         try:
             with open(metadata_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError) as ex:
+                metadata = json.load(f)
+        except (OSError, ValueError) as ex:
             logger.warning(f"Skipping {group_name}: cannot read {metadata_path}: {ex}")
             return None
+        if not isinstance(metadata, dict):
+            logger.warning(
+                f"Skipping {group_name}: {metadata_path} is not a JSON object"
+            )
+            return None
+        return metadata
+
+    def is_group_name_free(self, group_name: str) -> bool:
+        group_path = os.path.join(self.base_path, group_name)
+        if not os.path.lexists(group_path):
+            return True
+        if not os.path.isdir(group_path):
+            return False
+        history_path = self.history_folder_path(group_name)
+        if os.path.lexists(history_path) and (
+            not os.path.isdir(history_path) or os.listdir(history_path)
+        ):
+            return False
+        if not os.path.lexists(self.group_metadata_path(group_name)):
+            return True
+        metadata = self.read_metadata(group_name)
+        return metadata is not None and metadata.get("id") is None
 
     def write_metadata(self, group_name: str, metadata: dict) -> None:
         """Replace metadata atomically, via a tmp sibling.

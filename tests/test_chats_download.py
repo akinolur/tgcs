@@ -1,6 +1,11 @@
 import json
 
-from telethon.tl.types import InputPeerChannel, InputPeerUser
+import pytest
+from telethon.tl.types import (
+    InputPeerChannel,
+    InputPeerChat,
+    InputPeerUser,
+)
 
 from tgcs.commands.chats import _chat_peer_from_metadata, _download_all, _download_one
 from tgcs.paths import FilePathManager
@@ -13,11 +18,11 @@ class FakeDownloader:
         self.failing = set(failing)
         self.downloaded = []
 
-    def download_chat_history(self, chat_peer, days):
-        if chat_peer in self.failing:
+    def download_chat_history(self, group_name, chat_peer, days):
+        if group_name in self.failing:
             raise RuntimeError("boom")
-        self.downloaded.append(chat_peer)
-        return chat_peer, 1
+        self.downloaded.append(group_name)
+        return 1
 
 
 def _known_group(path_manager, name, downloading=True):
@@ -91,3 +96,24 @@ def test_chat_peer_from_metadata_without_type_still_builds_channel_peer():
 
     # then
     assert peer == InputPeerChannel(1, 42)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"id": 1, "access_hash": 0, "type": "Chat"},
+        {"id": 1, "access_hash": 0, "type": "ChatForbidden"},
+        {"id": 1, "access_hash": 0},
+    ],
+)
+def test_chat_peer_from_metadata_does_not_confuse_a_basic_group_with_a_user(metadata):
+    # when / then
+    assert _chat_peer_from_metadata(metadata) == InputPeerChat(1)
+
+
+def test_chat_peer_from_metadata_of_a_channel_without_access_hash():
+    # given
+    metadata = {"id": 1, "access_hash": None, "type": "Channel"}
+
+    # when / then
+    assert _chat_peer_from_metadata(metadata) == InputPeerChannel(1, 0)

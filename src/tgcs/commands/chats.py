@@ -222,13 +222,19 @@ def get_chats_metadata(ctx: typer.Context):
     if not group_folder:
         typer.echo(f"telegram.group_folder is not set. Edit {container.config_path}.")
         raise typer.Exit(code=1)
-    from tgcs.telegram.downloader import FolderNotFoundError
+    from tgcs.telegram.downloader import (
+        DuplicateChatFolderError,
+        FolderNotFoundError,
+    )
 
     try:
         _get_chats_metadata(group_folder, container.user_client, container.path_manager)
     except FolderNotFoundError as ex:
         typer.echo(str(ex))
         typer.echo(f"Fix telegram.group_folder in {container.config_path}.")
+        raise typer.Exit(code=1) from ex
+    except DuplicateChatFolderError as ex:
+        typer.echo(str(ex))
         raise typer.Exit(code=1) from ex
 
 
@@ -289,13 +295,25 @@ def download(
 
 
 def _chat_peer_from_metadata(metadata: dict):
-    from telethon.tl.types import InputPeerChannel, InputPeerUser
+    from telethon.tl.types import (
+        InputPeerChannel,
+        InputPeerChat,
+        InputPeerUser,
+    )
+
+    from tgcs.telegram.downloader import PeerKind, peer_kind
 
     chat_id = metadata["id"]
     access_hash = metadata.get("access_hash", 0)
-    if metadata.get("type") == "User":
+    kind = peer_kind(metadata.get("type"), access_hash)
+    if kind is PeerKind.USER:
         return InputPeerUser(chat_id, access_hash)
-    return InputPeerChannel(chat_id, access_hash) if access_hash else chat_id
+    elif kind is PeerKind.CHAT:
+        return InputPeerChat(chat_id)
+    elif kind is PeerKind.CHANNEL:
+        return InputPeerChannel(chat_id, access_hash or 0)
+    else:
+        assert_never(kind)
 
 
 def _download_one(
@@ -309,10 +327,10 @@ def _download_one(
     try:
         with open(metadata_path) as f:
             metadata = json.load(f)
-        name, count = tg_downloader.download_chat_history(
-            _chat_peer_from_metadata(metadata), days
+        count = tg_downloader.download_chat_history(
+            group_name, _chat_peer_from_metadata(metadata), days
         )
-        logger.info(f"{name}: {count} new messages")
+        logger.info(f"{group_name}: {count} new messages")
         return True
     except Exception as ex:
         logger.error(f"{group_name}: {ex}")

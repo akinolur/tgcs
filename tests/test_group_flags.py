@@ -117,7 +117,7 @@ def test_manual_download_keeps_downloading_enabled(tmp_path, flags, expected):
     downloader = TelegramChatHistoryDownloader(_FakeClient(entity), path_manager)
 
     # when
-    downloader.download_chat_history("chat")
+    downloader.download_chat_history("chat", "chat")
 
     # then
     metadata = path_manager.read_metadata("chat")
