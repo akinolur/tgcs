@@ -1,4 +1,3 @@
-import fcntl
 import os
 import threading
 from contextlib import contextmanager
@@ -7,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from telethon.tl import types
 
+from tgcs.fs import locker
 from tgcs.layouts import Layout
 from tgcs.paths import FilePathManager
 from tgcs.telegram.downloader import TelegramChatHistoryDownloader
@@ -61,7 +61,7 @@ def _another_process_holds_the_lock(path_manager, action):
     fd = _open_lock_file(path_manager)
     thread = threading.Thread(target=action, daemon=True)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        locker.lock(fd)
         thread.start()
         thread.join(0.2)
         assert thread.is_alive()
@@ -143,7 +143,7 @@ def test_lock_is_released_after_an_error(path_manager):
     # then
     fd = _open_lock_file(path_manager)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert locker.try_lock(fd)
     finally:
         os.close(fd)
 

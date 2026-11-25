@@ -367,6 +367,7 @@ def test_characters_that_windows_forbids_are_replaced_in_the_folder_name(path_ma
     assert list(_update(path_manager, _channel(1, title))) == ["a__b_c_d_e_f_g_h_i_j"]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows forbids this name")
 def test_known_folder_keeps_a_name_with_a_forbidden_character(path_manager):
     # given
     _known(path_manager, "a:b", id=1, access_hash=10, type="Channel")

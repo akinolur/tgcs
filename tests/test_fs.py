@@ -150,5 +150,6 @@ def test_msvcrt_lock_leaves_the_file_position_at_the_start(fd):
     locker.unlock(fd)
 
     # then
-    assert os.pread(fd, 10, 0) == b"42"
+    os.lseek(fd, 0, os.SEEK_SET)
+    assert os.read(fd, 10) == b"42"
     assert msvcrt.calls[0][1] == msvcrt.calls[1][1] > 2
