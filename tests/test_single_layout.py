@@ -388,6 +388,66 @@ def test_switching_back_to_daily_backfills_every_date_folder(tmp_path):
         assert [json.loads(line)["id"] for line in f] == [1, 2]
 
 
+def test_failed_split_keeps_the_single_layout_and_a_retry_splits(tmp_path, capsys):
+    # given
+    from tgcs.commands.chats import chat_layout
+
+    old = datetime(2025, 3, 1, 9, 0, tzinfo=timezone.utc)
+    downloader = _downloader(tmp_path, [FakeMessage(1, "hi", at=old)])
+    path_manager = downloader.path_manager
+    _make_single_layout(path_manager)
+    downloader.download_chat_history("quiet_chat")
+    raw_path = path_manager.raw_history_path("quiet_chat")
+    with open(raw_path) as f:
+        good = f.read()
+    with open(raw_path, "a") as f:
+        f.write("not json\n")
+    ctx = SimpleNamespace(obj=SimpleNamespace(path_manager=path_manager))
+
+    # when
+    with pytest.raises(json.JSONDecodeError):
+        chat_layout(ctx, name="quiet_chat", value=Layout.DAILY)
+
+    # then
+    assert path_manager.layout("quiet_chat") is Layout.SINGLE
+    assert "layout set" not in capsys.readouterr().out
+
+    # when
+    with open(raw_path, "w") as f:
+        f.write(good)
+    chat_layout(ctx, name="quiet_chat", value=Layout.DAILY)
+
+    # then
+    assert path_manager.layout("quiet_chat") is Layout.DAILY
+    assert os.path.exists(path_manager.date_history_path("quiet_chat", "2025-03-01"))
+
+
+def test_layout_change_of_an_unknown_chat_does_not_split(tmp_path, capsys):
+    # given
+    from tgcs.commands.chats import chat_layout
+
+    old = datetime(2025, 3, 1, 9, 0, tzinfo=timezone.utc)
+    downloader = _downloader(tmp_path, [])
+    path_manager = FilePathManager(
+        base_path=str(tmp_path / "data"), default_layout=Layout.SINGLE
+    )
+    path_manager.create_folders_if_not_exists("quiet_chat")
+    message = downloader._prepare_message(FakeMessage(1, "hi", at=old))
+    update_raw_history(path_manager, [message], "quiet_chat")
+    ctx = SimpleNamespace(obj=SimpleNamespace(path_manager=path_manager))
+
+    # when
+    with pytest.raises(typer.Exit) as ex:
+        chat_layout(ctx, name="quiet_chat", value=Layout.DAILY)
+
+    # then
+    assert ex.value.exit_code == 1
+    assert "unknown chat" in capsys.readouterr().out
+    assert os.listdir(path_manager.history_folder_path("quiet_chat")) == [
+        "raw_chat_history.jsonl"
+    ]
+
+
 def test_summarization_skips_a_single_layout_chat(tmp_path):
     # given: a downloaded single-layout chat has no date folders to summarize
     from tgcs.summary_creator import SummaryCreator

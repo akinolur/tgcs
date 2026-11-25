@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import TYPE_CHECKING, Optional, assert_never
+from typing import TYPE_CHECKING, NoReturn, Optional, assert_never
 
 import typer
 
@@ -193,12 +193,9 @@ def chat_layout(
     if value is None:
         typer.echo(str(path_manager.layout(name)))
         return
-    previous = path_manager.layout(name)
-    if not path_manager.set_layout(name, value):
-        typer.echo(f"{name}: unknown chat. Run 'tgcs chats update' first.")
-        raise typer.Exit(code=1)
-    typer.echo(f"{name}: layout set to {str(value)}")
-    if previous is Layout.SINGLE and value is Layout.DAILY:
+    if path_manager.read_metadata(name) is None:
+        _exit_unknown_chat(name)
+    if path_manager.layout(name) is Layout.SINGLE and value is Layout.DAILY:
         # the single layout never wrote date folders, and the next download only
         # splits its own window, so backfill the whole raw file now
         typer.echo(
@@ -207,6 +204,14 @@ def chat_layout(
         from tgcs.history_files import split_raw_history
 
         split_raw_history(path_manager, name)
+    if not path_manager.set_layout(name, value):
+        _exit_unknown_chat(name)
+    typer.echo(f"{name}: layout set to {str(value)}")
+
+
+def _exit_unknown_chat(name: str) -> NoReturn:
+    typer.echo(f"{name}: unknown chat. Run 'tgcs chats update' first.")
+    raise typer.Exit(code=1)
 
 
 @app.command(name="update")
