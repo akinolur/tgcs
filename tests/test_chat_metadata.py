@@ -18,11 +18,11 @@ class FakeClient:
         return SimpleNamespace(filters=self._folders)
 
 
-def _folder(title, include_peers=()):
+def _folder(title, include_peers=(), pinned_peers=()):
     folder = types.DialogFilter(
         id=1,
         title=types.TextWithEntities(text=title, entities=[]),
-        pinned_peers=[],
+        pinned_peers=list(pinned_peers),
         include_peers=list(include_peers),
         exclude_peers=[],
     )
@@ -64,6 +64,35 @@ def test_empty_folder_does_not_disable_known_chats(tmp_path):
     # then
     assert result == {}
     assert path_manager.is_downloading_enabled("group")
+
+
+def test_folder_peers_join_pinned_and_included_without_duplicates(tmp_path):
+    # given
+    path_manager = FilePathManager(base_path=str(tmp_path / "data"))
+    pinned = types.InputPeerChannel(1, 10)
+    user_with_same_id = types.InputPeerUser(1, 20)
+    included = types.InputPeerChat(2)
+    client = FakeClient(
+        [
+            _folder(
+                "Chats",
+                pinned_peers=[pinned],
+                include_peers=[
+                    types.InputPeerChannel(1, 99),
+                    user_with_same_id,
+                    included,
+                    types.InputPeerSelf(),
+                ],
+            )
+        ]
+    )
+    downloader = TelegramChatHistoryDownloader(client, path_manager)
+
+    # when
+    peers = downloader.get_chat_peers_from_folder("Chats")
+
+    # then
+    assert peers == [pinned, user_with_same_id, included, types.InputPeerSelf()]
 
 
 def test_group_name_for_basic_chat_without_username_attribute(tmp_path):

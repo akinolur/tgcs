@@ -57,6 +57,14 @@ def _format_from_id(message: "Message") -> str | None:
     return f"channel{message.sender_id}"
 
 
+def _peer_key(peer) -> tuple[str, int | None]:
+    for field in ("user_id", "chat_id", "channel_id"):
+        peer_id = getattr(peer, field, None)
+        if peer_id is not None:
+            return field, peer_id
+    return type(peer).__name__, None
+
+
 class TelegramChatHistoryDownloader:
     def __init__(
         self,
@@ -243,8 +251,10 @@ class TelegramChatHistoryDownloader:
     # WORK WITH FOLDER
     def get_chat_peers_from_folder(self, folder_name: str):
         folder = self._get_folder_by_name(folder_name)
-        chat_peers = [ch for ch in folder.include_peers]
-        return chat_peers
+        chat_peers = {}
+        for peer in [*folder.pinned_peers, *folder.include_peers]:
+            chat_peers.setdefault(_peer_key(peer), peer)
+        return list(chat_peers.values())
 
     def _get_folder_by_name(self, folder_name: str):
         client = self._client
