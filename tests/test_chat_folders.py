@@ -357,3 +357,19 @@ def test_download_writes_to_the_named_folder(path_manager, name):
     assert path_manager.read_metadata(name)["id"] == chat_id
     for other in {"team", "team_2", "custom"} - {name}:
         assert not os.path.exists(path_manager.raw_history_path(other))
+
+
+def test_characters_that_windows_forbids_are_replaced_in_the_folder_name(path_manager):
+    # given
+    title = 'A: b*c?d"e<f>g|h/i\\j'
+
+    # when / then
+    assert list(_update(path_manager, _channel(1, title))) == ["a__b_c_d_e_f_g_h_i_j"]
+
+
+def test_known_folder_keeps_a_name_with_a_forbidden_character(path_manager):
+    # given
+    _known(path_manager, "a:b", id=1, access_hash=10, type="Channel")
+
+    # when / then
+    assert list(_update(path_manager, _channel(1, "A:B"))) == ["a:b"]

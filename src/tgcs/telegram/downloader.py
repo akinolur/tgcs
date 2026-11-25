@@ -68,6 +68,9 @@ def _format_from_id(message: "Message") -> str | None:
     return f"channel{message.sender_id}"
 
 
+_FOLDER_NAME_TABLE = str.maketrans(dict.fromkeys('/\\:*?"<>|', "_"))
+
+
 class PeerKind(StrEnum):
     USER = "user"
     CHAT = "chat"
@@ -172,7 +175,7 @@ class TelegramChatHistoryDownloader:
             title = self._display_title(entity)
             group_name = str(title).lower().strip().replace(" ", "_")
             # titles are free text: keep the name a single path segment
-            group_name = group_name.replace("/", "_").replace("\\", "_")
+            group_name = group_name.translate(_FOLDER_NAME_TABLE)
             if group_name.strip(".") == "":
                 group_name = f"chat_{entity.id}"
         return group_name
