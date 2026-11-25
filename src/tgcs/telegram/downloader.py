@@ -54,6 +54,11 @@ def _format_from_id(message: "Message") -> str | None:
     # the channel the message was posted as
     if message.sender_id is None:
         return None
+    if (
+        isinstance(message.peer_id, types.PeerUser)
+        and message.peer_id.user_id == message.sender_id
+    ):
+        return f"user{message.sender_id}"
     return f"channel{message.sender_id}"
 
 
