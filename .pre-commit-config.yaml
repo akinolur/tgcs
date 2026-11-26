@@ -24,6 +24,12 @@ repos:
       - id: trailing-whitespace
       - id: debug-statements
 
+  - repo: https://github.com/agent-sh/agnix
+    rev: v0.61.0
+    hooks:
+      - id: agnix
+        args: []
+
   - repo: https://github.com/abravalheri/validate-pyproject
     rev: 'v0.27'
     hooks:
