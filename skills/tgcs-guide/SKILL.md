@@ -1,6 +1,6 @@
 ---
 name: tgcs-guide
-description: Use when user asks about the "tgcs" project - installation, setup, configuration, CLI usage, or actual Telegram chat data (groups and private chats: messages, threads, summaries, activity)
+description: Use when user asks about the "tgcs" project - installation, setup, configuration, CLI usage, or actual Telegram chat data (groups and private chats - messages, threads, summaries, activity)
 ---
 
 ## Setup
